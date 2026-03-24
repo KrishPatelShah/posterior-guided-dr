@@ -72,3 +72,8 @@ AMASS/*
 >>>>>>> dev/sysid-clean
 roboverse/
 sim2real/
+
+
+.claude
+.github
+.vscode
