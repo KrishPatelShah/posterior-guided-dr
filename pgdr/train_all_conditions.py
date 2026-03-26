@@ -201,10 +201,9 @@ def train_single_condition(
 
     num_updates = total_timesteps // (num_envs * num_steps)
 
-    # --- PPO agent setup ---
-    # Initialize policy and value networks.
-    # We use a standard MLP actor-critic.
+    # --- PPO agent + environment setup ---
     from pgdr._ppo import PPOAgent, PPOConfig
+    from pgdr.t1_env import PGDREnv, OBS_DIM, ACT_DIM
 
     ppo_cfg = PPOConfig(
         num_envs=num_envs,
@@ -220,10 +219,13 @@ def train_single_condition(
         update_epochs=update_epochs,
     )
 
-    obs_dim = mj_model.nq + mj_model.nv  # Simplified: qpos + qvel
-    act_dim = mj_model.nu
+    env = PGDREnv(
+        mj_model=mj_model,
+        randomizer=randomizer,
+        max_episode_steps=episode_length,
+    )
 
-    agent = PPOAgent(ppo_cfg, obs_dim, act_dim, rng)
+    agent = PPOAgent(ppo_cfg, OBS_DIM, ACT_DIM, rng)
 
     # --- Main training loop ---
     import time as time_mod
@@ -231,32 +233,61 @@ def train_single_condition(
     t0 = time_mod.time()
     episode_returns = []
 
+    # Initial env reset
+    rng, reset_rng = jax.random.split(rng)
+    env_state = env.reset(reset_rng, num_envs=num_envs)
+
     for update in range(num_updates):
-        rng, rng_reset, rng_step = jax.random.split(rng, 3)
+        rng, rollout_rng = jax.random.split(rng)
 
-        # Reset environments with randomized parameters
-        batched_model, _ = randomizer.apply_batch(
-            rng_reset, mjx_model_default, num_envs
+        # Collect rollout from current env state
+        rollout, env_state, rng = agent.collect_rollout(
+            env, env_state, num_steps, rollout_rng
         )
 
-        # Collect rollout
-        rollout_data = agent.collect_rollout(
-            batched_model, rng_step, episode_length, num_steps
-        )
+        # Bootstrap value for last state
+        last_value = jax.vmap(
+            lambda o: agent.get_value(agent.state.params, o[None]).squeeze()
+        )(env_state.obs)
 
         # PPO update
-        loss_info = agent.update(rollout_data)
+        loss_info, rng = agent.update(rollout, last_value, rng)
+
+        # Auto-reset environments that finished
+        rng, reset_rng2 = jax.random.split(rng)
+        done_mask = env_state.done
+        if jnp.any(done_mask):
+            new_state = env.reset(reset_rng2, num_envs=num_envs)
+            # Replace done environments with fresh resets
+            def _merge(new, old, mask):
+                return jnp.where(mask[:, None] if new.ndim > 1 else mask, new, old)
+            env_state = env_state._replace(
+                mjx_data=jax.tree_util.tree_map(
+                    lambda n, o: jnp.where(
+                        done_mask.reshape((-1,) + (1,) * (n.ndim - 1)), n, o
+                    ),
+                    new_state.mjx_data, env_state.mjx_data,
+                ),
+                mjx_model=jax.tree_util.tree_map(
+                    lambda n, o: jnp.where(
+                        done_mask.reshape((-1,) + (1,) * (n.ndim - 1)), n, o
+                    ),
+                    new_state.mjx_model, env_state.mjx_model,
+                ),
+                obs=jnp.where(done_mask[:, None], new_state.obs, env_state.obs),
+                command=jnp.where(done_mask[:, None], new_state.command, env_state.command),
+                step_count=jnp.where(done_mask, new_state.step_count, env_state.step_count),
+                done=jnp.zeros_like(env_state.done),
+            )
 
         if update % 100 == 0:
             elapsed = time_mod.time() - t0
             steps_done = (update + 1) * num_envs * num_steps
-            fps = steps_done / elapsed
-            mean_return = float(jnp.mean(jnp.array(
-                rollout_data.get("episode_returns", [0.0])
-            )))
+            fps = steps_done / max(elapsed, 1e-6)
+            mean_return = float(jnp.mean(rollout.reward))
             episode_returns.append(mean_return)
             print(f"    Update {update}/{num_updates}: "
-                  f"return={mean_return:.2f}  "
+                  f"return={mean_return:.3f}  "
                   f"loss={loss_info.get('total_loss', 0):.4f}  "
                   f"fps={fps:.0f}  [{elapsed:.0f}s]")
 

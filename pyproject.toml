@@ -32,7 +32,16 @@ dependencies = [
   "lxml",
   "numpy-stl",
   "open3d",
-  "optuna"
+  "optuna",
+  # PGDR dependencies
+  "jax[cuda12]>=0.4.20",
+  "flax>=0.8.0",
+  "optax>=0.2.0",
+  "mujoco>=3.1.0",
+  "mujoco-mjx>=3.1.0",
+  "evosax>=0.1.6",
+  "cmaes>=0.10.0",
+  "mujoco-playground>=0.0.2",
 ]
 
 [project.urls]

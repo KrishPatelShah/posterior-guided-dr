@@ -447,8 +447,7 @@ def evaluate_all_conditions(
     }
 
     # --- Per-condition policy evaluation ---
-    # This would iterate over trained checkpoints and evaluate each
-    # We provide the structure; actual evaluation requires trained policies.
+    mj_model_mjx = mjx.put_model(mj_model)
     checkpoints = Path(checkpoints_dir)
     if checkpoints.exists():
         for condition_dir in sorted(checkpoints.iterdir()):
@@ -463,8 +462,42 @@ def evaluate_all_conditions(
                 print(f"  Skipping (no final.pkl)")
                 continue
 
-            # TODO: Load policy and run evaluation
-            # results[condition_name] = evaluate_velocity_tracking(...)
+            # Load PPO agent and evaluate
+            try:
+                from pgdr._ppo import PPOAgent, PPOConfig
+                from pgdr.t1_env import OBS_DIM, ACT_DIM
+
+                rng = jax.random.PRNGKey(0)
+                # Load agent from checkpoint
+                agent = PPOAgent.load(policy_path, rng)
+
+                # Build eval model using p_star (nominal conditions)
+                eval_mjx_model = ps.inject(mj_model_mjx, p_star)
+
+                # Build deterministic policy function
+                def policy_fn(obs, rng_unused):
+                    return agent.get_deterministic_action(obs[None]).squeeze(0)
+
+                # Standard eval commands
+                eval_commands = [
+                    {"vx": 1.0, "vy": 0.0, "wz": 0.0, "duration": 5.0},
+                    {"vx": 0.0, "vy": 0.0, "wz": 0.5, "duration": 3.0},
+                    {"vx": -0.5, "vy": 0.0, "wz": 0.0, "duration": 3.0},
+                    {"vx": 0.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
+                ]
+
+                vel_results = evaluate_velocity_tracking(
+                    policy_fn=policy_fn,
+                    mjx_model=eval_mjx_model,
+                    command_sequence=eval_commands,
+                    control_dt=0.02,
+                )
+                results[condition_name] = vel_results
+                print(f"  RMS vel error: {vel_results.get('rms_total', 'N/A'):.4f}")
+
+            except Exception as e:
+                print(f"  Evaluation failed: {e}")
+                results[condition_name] = {"error": str(e)}
 
     return results
 
