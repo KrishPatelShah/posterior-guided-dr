@@ -332,7 +332,7 @@ class PGDREnv:
     def from_playground(
         cls,
         randomizer,
-        task_name: str = "booster_t1-joystick",
+        task_name: str = "T1JoystickFlatTerrain",
         **kwargs,
     ) -> "PGDREnv":
         """
