@@ -19,19 +19,19 @@
 #SBATCH -n 1
 #SBATCH --gpus-per-node=1
 #SBATCH -t 24:00:00
-#SBATCH -A <YOUR_ALLOCATION>   # <-- CHANGE THIS to your TACC allocation
+#SBATCH -A IRI26006
 
 set -euo pipefail
 
 # ---- TACC module setup ----
 module load gcc/11.2.0
 module load cuda/12.0
-module load python3/3.11
+module load python3/3.9.7
 
 # ---- Environment ----
-# Uncomment and edit if using a virtualenv:
-# source $WORK/pgdr_env/bin/activate
-
+export PYTHONPATH=$WORK/python_packages:$PYTHONPATH
+export MUJOCO_PATH=$WORK/mujoco
+export LD_LIBRARY_PATH=$WORK/mujoco/lib:$LD_LIBRARY_PATH
 export XLA_FLAGS="--xla_gpu_cuda_data_dir=$TACC_CUDA_DIR"
 export JAX_PLATFORMS="gpu"
 
