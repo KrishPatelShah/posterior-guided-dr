@@ -17,7 +17,6 @@
 #SBATCH -p gpu-a100
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --gpus-per-node=1
 #SBATCH -t 24:00:00
 #SBATCH -A IRI26006
 
