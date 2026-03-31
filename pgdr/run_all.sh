@@ -36,7 +36,7 @@ export JAX_PLATFORMS="gpu"
 
 # ---- Paths ----
 cd /home1/11386/mohammada/posterior-guided-dr
-MODEL_XML="$WORK/mujoco_menagerie/booster_t1/t1.xml"
+MODEL_XML="/home1/11386/mohammada/posterior-guided-dr/mujoco_menagerie/booster_t1/t1.xml"
 
 RESULTS_DIR="pgdr/results"
 CHECKPOINTS_DIR="pgdr/checkpoints"
