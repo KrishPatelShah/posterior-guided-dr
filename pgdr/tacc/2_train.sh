@@ -9,15 +9,15 @@
 #SBATCH -t 06:00:00
 #SBATCH -A IRI26006
 
-set -euo pipefail
+set -eo pipefail
 
 module load gcc/11.2.0
 module load cuda/12.0
 module load python3/3.9.7
 
-export PYTHONPATH=$WORK/python_packages:$PYTHONPATH
+export PYTHONPATH=$WORK/python_packages:${PYTHONPATH:-}
 export MUJOCO_PATH=$WORK/mujoco
-export LD_LIBRARY_PATH=$WORK/mujoco/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$WORK/mujoco/lib:${LD_LIBRARY_PATH:-}
 export XLA_FLAGS="--xla_gpu_cuda_data_dir=$TACC_CUDA_DIR"
 export JAX_PLATFORMS="gpu"
 
