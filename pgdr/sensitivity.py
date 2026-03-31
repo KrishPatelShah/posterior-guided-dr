@@ -48,6 +48,20 @@ def _sanitize_geom_types_for_mjx(mj_model: mujoco.MjModel) -> int:
     return converted
 
 
+def _sanitize_dof_frictionloss_for_mjx(mj_model: mujoco.MjModel) -> int:
+    """
+    Zero out dof_frictionloss because MJX currently does not implement it.
+
+    Returns:
+        Number of non-zero entries that were reset.
+    """
+    nonzero = mj_model.dof_frictionloss != 0.0
+    changed = int(nonzero.sum())
+    if changed > 0:
+        mj_model.dof_frictionloss[nonzero] = 0.0
+    return changed
+
+
 def _preflight_checks(
     mj_model: mujoco.MjModel,
     actions: jnp.ndarray,
@@ -168,27 +182,43 @@ def run_sensitivity_analysis(
     for msg in _preflight_checks(mj_model, actions):
         warnings.warn(f"[preflight] {msg}", RuntimeWarning, stacklevel=2)
 
-    # Put MJX model on device. If MJX rejects cylinder collisions, convert
-    # cylinders -> capsules and retry once.
-    try:
-        mjx_model_default = mjx.put_model(mj_model)
-    except NotImplementedError as e:
-        if "collisions not implemented" not in str(e):
+    # Put MJX model on device. Retry with targeted sanitization for known
+    # MJX gaps (unsupported collision pairs and dof_frictionloss).
+    while True:
+        try:
+            mjx_model_default = mjx.put_model(mj_model)
+            break
+        except NotImplementedError as e:
+            msg = str(e)
+            if "collisions not implemented" in msg:
+                converted = _sanitize_geom_types_for_mjx(mj_model)
+                if converted <= 0:
+                    raise RuntimeError(
+                        "MJX rejected model collisions and no cylinder geoms were "
+                        "found to auto-convert."
+                    ) from e
+                warnings.warn(
+                    f"MJX collision workaround applied: converted {converted} "
+                    "cylinder geoms to capsules, then retrying mjx.put_model().",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                continue
+            if "dof_frictionloss is not implemented" in msg:
+                changed = _sanitize_dof_frictionloss_for_mjx(mj_model)
+                if changed <= 0:
+                    raise RuntimeError(
+                        "MJX rejected dof_frictionloss, but no non-zero "
+                        "dof_frictionloss entries were found to sanitize."
+                    ) from e
+                warnings.warn(
+                    f"MJX frictionloss workaround applied: zeroed {changed} "
+                    "dof_frictionloss entries, then retrying mjx.put_model().",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                continue
             raise
-        converted = _sanitize_geom_types_for_mjx(mj_model)
-        if converted <= 0:
-            raise RuntimeError(
-                "MJX rejected model collisions and no cylinder geoms were found "
-                "to auto-convert. Please update the model contact geometry or run "
-                "a pure MuJoCo (non-MJX) fallback."
-            ) from e
-        warnings.warn(
-            f"MJX collision workaround applied: converted {converted} cylinder "
-            "geoms to capsules, then retrying mjx.put_model().",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        mjx_model_default = mjx.put_model(mj_model)
     mjx_data_default = mjx.put_data(mj_model, mujoco.MjData(mj_model))
 
     # --- Baseline rollout (all params at default) ---
