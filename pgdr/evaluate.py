@@ -51,6 +51,16 @@ def _sanitize_dof_frictionloss_for_mjx(mj_model: mujoco.MjModel) -> int:
     return changed
 
 
+def _sanitize_integrator_for_mjx(mj_model: mujoco.MjModel) -> bool:
+    """Switch unsupported MuJoCo integrators to Euler for MJX compatibility."""
+    current = int(mj_model.opt.integrator)
+    euler = int(mujoco.mjtIntegrator.mjINT_EULER)
+    if current != euler:
+        mj_model.opt.integrator = euler
+        return True
+    return False
+
+
 def _put_model_with_mjx_fallback(mj_model: mujoco.MjModel) -> mjx.Model:
     """Create MJX model with retries for known MJX unsupported features."""
     while True:
@@ -82,6 +92,19 @@ def _put_model_with_mjx_fallback(mj_model: mujoco.MjModel) -> mjx.Model:
                 warnings.warn(
                     f"MJX frictionloss workaround applied: zeroed {changed} "
                     "dof_frictionloss entries.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                continue
+            if "mjtIntegrator.mjINT_IMPLICITFAST" in msg:
+                changed = _sanitize_integrator_for_mjx(mj_model)
+                if not changed:
+                    raise RuntimeError(
+                        "MJX rejected integrator, but integrator was already Euler."
+                    ) from e
+                warnings.warn(
+                    "MJX integrator workaround applied: switched model integrator "
+                    "to mjINT_EULER.",
                     RuntimeWarning,
                     stacklevel=2,
                 )
