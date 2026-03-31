@@ -40,8 +40,8 @@ class ParamDef:
     default: float          # Nominal value from the XML model
     scale: float            # Normalization scale (maps ±1 → ±scale in physical units)
     mode: str = "additive"  # "additive" or "multiplicative"
-    lower: float = -jnp.inf # Physical lower bound (e.g., mass > 0)
-    upper: float = jnp.inf  # Physical upper bound
+    lower: float = float("-inf")  # Physical lower bound (e.g., mass > 0)
+    upper: float = float("inf")   # Physical upper bound
     col: int = 0            # Column index for 2D arrays (e.g., solref col 0 vs 1)
 
 
@@ -72,10 +72,10 @@ class ParamSpace:
 
     def finalize(self) -> ParamSpace:
         """Precompute vectorized arrays after all params are added."""
-        self._defaults = jnp.array([p.default for p in self.params])
-        self._scales = jnp.array([p.scale for p in self.params])
-        self._lowers = jnp.array([p.lower for p in self.params])
-        self._uppers = jnp.array([p.upper for p in self.params])
+        self._defaults = jnp.array([float(p.default) for p in self.params])
+        self._scales = jnp.array([float(p.scale) for p in self.params])
+        self._lowers = jnp.array([float(p.lower) for p in self.params])
+        self._uppers = jnp.array([float(p.upper) for p in self.params])
         self._modes = [p.mode for p in self.params]
         return self
 
