@@ -21,6 +21,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -30,6 +31,58 @@ import numpy as np
 import yaml
 
 from pgdr.param_space import ParamSpace, build_t1_param_space, inject_contact_params_to_all_feet
+
+
+def _sanitize_geom_types_for_mjx(mj_model: mujoco.MjModel) -> int:
+    """Convert cylinder geoms to capsules for broader MJX collision support."""
+    cyl_type = int(mujoco.mjtGeom.mjGEOM_CYLINDER)
+    cap_type = int(mujoco.mjtGeom.mjGEOM_CAPSULE)
+    converted = 0
+    for gid in range(mj_model.ngeom):
+        if int(mj_model.geom_type[gid]) == cyl_type:
+            mj_model.geom_type[gid] = cap_type
+            converted += 1
+    return converted
+
+
+def _put_model_with_mjx_fallback(mj_model: mujoco.MjModel) -> mjx.Model:
+    """Create MJX model, retrying once after geometry sanitization if needed."""
+    try:
+        return mjx.put_model(mj_model)
+    except NotImplementedError as e:
+        if "collisions not implemented" not in str(e):
+            raise
+        converted = _sanitize_geom_types_for_mjx(mj_model)
+        if converted <= 0:
+            raise RuntimeError(
+                "MJX rejected model collisions, and no cylinder geoms were found "
+                "to auto-convert."
+            ) from e
+        warnings.warn(
+            f"MJX collision workaround applied: converted {converted} cylinder "
+            "geoms to capsules.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return mjx.put_model(mj_model)
+
+
+def _warn_action_shape(actions: jnp.ndarray, expected_nu: int) -> None:
+    """Warn on common action-shape mismatches before JAX tracing starts."""
+    if actions.ndim != 2:
+        warnings.warn(
+            f"Expected actions shape [T, nu], got ndim={actions.ndim}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return
+    if actions.shape[1] != expected_nu:
+        warnings.warn(
+            f"Action dimension mismatch: actions.shape[1]={actions.shape[1]} "
+            f"but model.nu={expected_nu}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +216,8 @@ def collect_reference_trajectory(
     Returns:
         ReferenceTrajectory with recorded q, qdot, actions.
     """
-    mjx_model = mjx.put_model(mj_model)
+    _warn_action_shape(actions, mj_model.nu)
+    mjx_model = _put_model_with_mjx_fallback(mj_model)
     mjx_model = param_space.inject(mjx_model, p_normalized)
     if foot_geom_ids:
         mjx_model = inject_contact_params_to_all_feet(
@@ -295,7 +349,8 @@ def run_identification(
     d = param_space.d
     rng = jax.random.PRNGKey(config.seed)
 
-    mjx_model = mjx.put_model(mj_model)
+    _warn_action_shape(ref.actions, mj_model.nu)
+    mjx_model = _put_model_with_mjx_fallback(mj_model)
     mjx_data = mjx.put_data(mj_model, mujoco.MjData(mj_model))
 
     # JIT the batch evaluation

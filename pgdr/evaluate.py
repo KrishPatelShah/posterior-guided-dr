@@ -18,6 +18,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -27,6 +28,40 @@ import numpy as np
 
 from pgdr.param_space import ParamSpace, build_t1_param_space, inject_contact_params_to_all_feet
 from pgdr.sysid import ReferenceTrajectory
+
+
+def _sanitize_geom_types_for_mjx(mj_model: mujoco.MjModel) -> int:
+    """Convert cylinder geoms to capsules for broader MJX collision support."""
+    cyl_type = int(mujoco.mjtGeom.mjGEOM_CYLINDER)
+    cap_type = int(mujoco.mjtGeom.mjGEOM_CAPSULE)
+    converted = 0
+    for gid in range(mj_model.ngeom):
+        if int(mj_model.geom_type[gid]) == cyl_type:
+            mj_model.geom_type[gid] = cap_type
+            converted += 1
+    return converted
+
+
+def _put_model_with_mjx_fallback(mj_model: mujoco.MjModel) -> mjx.Model:
+    """Create MJX model, retrying once after geometry sanitization if needed."""
+    try:
+        return mjx.put_model(mj_model)
+    except NotImplementedError as e:
+        if "collisions not implemented" not in str(e):
+            raise
+        converted = _sanitize_geom_types_for_mjx(mj_model)
+        if converted <= 0:
+            raise RuntimeError(
+                "MJX rejected model collisions, and no cylinder geoms were found "
+                "to auto-convert."
+            ) from e
+        warnings.warn(
+            f"MJX collision workaround applied: converted {converted} cylinder "
+            "geoms to capsules.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return mjx.put_model(mj_model)
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +357,14 @@ def compute_trajectory_prediction_error(
     Evaluate how well p* predicts held-out reference trajectories
     (not used during identification).
     """
-    mjx_model = mjx.put_model(mj_model)
+    if held_out_ref.actions.ndim != 2 or held_out_ref.actions.shape[1] != mj_model.nu:
+        warnings.warn(
+            f"Held-out actions shape {tuple(held_out_ref.actions.shape)} does not "
+            f"match expected [T, {mj_model.nu}].",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    mjx_model = _put_model_with_mjx_fallback(mj_model)
     mjx_model = param_space.inject(mjx_model, p_star)
     mjx_data = mjx.put_data(mj_model, mujoco.MjData(mj_model))
 
@@ -452,7 +494,7 @@ def evaluate_all_conditions(
     # --- Per-condition policy evaluation ---
     from pgdr._ppo import PPOAgent, PPOConfig
 
-    mjx_model_default = mjx.put_model(mj_model)
+    mjx_model_default = _put_model_with_mjx_fallback(mj_model)
 
     # Inject p* into model for evaluation
     mjx_model_eval = param_space.inject(mjx_model_default, p_star)

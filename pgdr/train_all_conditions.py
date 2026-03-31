@@ -21,10 +21,49 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+import warnings
 
 import jax
 import jax.numpy as jnp
 import yaml
+
+
+def _sanitize_geom_types_for_mjx(mj_model) -> int:
+    """Convert cylinder geoms to capsules for broader MJX collision support."""
+    import mujoco
+
+    cyl_type = int(mujoco.mjtGeom.mjGEOM_CYLINDER)
+    cap_type = int(mujoco.mjtGeom.mjGEOM_CAPSULE)
+    converted = 0
+    for gid in range(mj_model.ngeom):
+        if int(mj_model.geom_type[gid]) == cyl_type:
+            mj_model.geom_type[gid] = cap_type
+            converted += 1
+    return converted
+
+
+def _put_model_with_mjx_fallback(mj_model):
+    """Create MJX model, retrying once after geometry sanitization if needed."""
+    from mujoco import mjx
+
+    try:
+        return mjx.put_model(mj_model)
+    except NotImplementedError as e:
+        if "collisions not implemented" not in str(e):
+            raise
+        converted = _sanitize_geom_types_for_mjx(mj_model)
+        if converted <= 0:
+            raise RuntimeError(
+                "MJX rejected model collisions, and no cylinder geoms were found "
+                "to auto-convert."
+            ) from e
+        warnings.warn(
+            f"MJX collision workaround applied: converted {converted} cylinder "
+            "geoms to capsules.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return mjx.put_model(mj_model)
 
 
 def load_identification_results(results_dir: str) -> tuple[jnp.ndarray, jnp.ndarray]:
@@ -180,7 +219,7 @@ def train_single_condition(
     from pgdr._ppo import PPOAgent, PPOConfig, make_obs
 
     rng = jax.random.PRNGKey(seed)
-    mjx_model_default = mjx.put_model(mj_model)
+    mjx_model_default = _put_model_with_mjx_fallback(mj_model)
 
     tcfg = train_cfg.get("training", {})
     num_envs = tcfg.get("num_envs", 4096)

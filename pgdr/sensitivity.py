@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Optional
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -22,6 +23,57 @@ import mujoco
 from mujoco import mjx
 
 from pgdr.param_space import ParamSpace, build_t1_param_space
+
+
+def _sanitize_geom_types_for_mjx(mj_model: mujoco.MjModel) -> int:
+    """
+    Convert MJX-unsupported cylinder geoms to capsules in-place.
+
+    MJX currently does not implement all collision type pairs involving
+    cylinders (notably cylinder-box). Capsules are typically a close
+    approximation for robot links and are broadly supported.
+
+    Returns:
+        Number of geoms converted.
+    """
+    cyl_type = int(mujoco.mjtGeom.mjGEOM_CYLINDER)
+    cap_type = int(mujoco.mjtGeom.mjGEOM_CAPSULE)
+    converted = 0
+
+    for gid in range(mj_model.ngeom):
+        if int(mj_model.geom_type[gid]) == cyl_type:
+            mj_model.geom_type[gid] = cap_type
+            converted += 1
+
+    return converted
+
+
+def _preflight_checks(
+    mj_model: mujoco.MjModel,
+    actions: jnp.ndarray,
+) -> list[str]:
+    """Return non-fatal warnings that are worth surfacing before rollout."""
+    warnings_list: list[str] = []
+
+    if actions.ndim != 2:
+        warnings_list.append(
+            f"Expected actions shape [T, nu], got ndim={actions.ndim}."
+        )
+    elif actions.shape[1] != mj_model.nu:
+        warnings_list.append(
+            f"Action dimension mismatch: actions.shape[1]={actions.shape[1]} "
+            f"but model.nu={mj_model.nu}."
+        )
+
+    n_cyl = int((mj_model.geom_type == int(mujoco.mjtGeom.mjGEOM_CYLINDER)).sum())
+    n_box = int((mj_model.geom_type == int(mujoco.mjtGeom.mjGEOM_BOX)).sum())
+    if n_cyl > 0 and n_box > 0:
+        warnings_list.append(
+            f"Model has {n_cyl} cylinder geoms and {n_box} box geoms; "
+            "MJX may fail on unsupported cylinder-box collisions."
+        )
+
+    return warnings_list
 
 
 @jax.jit
@@ -112,8 +164,31 @@ def run_sensitivity_analysis(
     d = param_space.d
     rng = jax.random.PRNGKey(rng_seed)
 
-    # Put MJX model on device
-    mjx_model_default = mjx.put_model(mj_model)
+    # Preflight checks to catch common runtime issues up front.
+    for msg in _preflight_checks(mj_model, actions):
+        warnings.warn(f"[preflight] {msg}", RuntimeWarning, stacklevel=2)
+
+    # Put MJX model on device. If MJX rejects cylinder collisions, convert
+    # cylinders -> capsules and retry once.
+    try:
+        mjx_model_default = mjx.put_model(mj_model)
+    except NotImplementedError as e:
+        if "collisions not implemented" not in str(e):
+            raise
+        converted = _sanitize_geom_types_for_mjx(mj_model)
+        if converted <= 0:
+            raise RuntimeError(
+                "MJX rejected model collisions and no cylinder geoms were found "
+                "to auto-convert. Please update the model contact geometry or run "
+                "a pure MuJoCo (non-MJX) fallback."
+            ) from e
+        warnings.warn(
+            f"MJX collision workaround applied: converted {converted} cylinder "
+            "geoms to capsules, then retrying mjx.put_model().",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        mjx_model_default = mjx.put_model(mj_model)
     mjx_data_default = mjx.put_data(mj_model, mujoco.MjData(mj_model))
 
     # --- Baseline rollout (all params at default) ---
