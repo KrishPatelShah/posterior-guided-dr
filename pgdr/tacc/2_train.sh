@@ -19,7 +19,7 @@ export PYTHONPATH=$WORK/python_packages:${PYTHONPATH:-}
 export MUJOCO_PATH=$WORK/mujoco
 export LD_LIBRARY_PATH=$WORK/mujoco/lib:${LD_LIBRARY_PATH:-}
 export XLA_FLAGS="--xla_gpu_cuda_data_dir=$TACC_CUDA_DIR"
-export JAX_PLATFORMS="gpu"
+export JAX_PLATFORMS=""
 
 cd /home1/11386/mohammada/posterior-guided-dr
 MODEL_XML="/home1/11386/mohammada/posterior-guided-dr/mujoco_menagerie/booster_t1/t1.xml"

@@ -18,7 +18,7 @@ export PYTHONPATH=$WORK/python_packages:${PYTHONPATH:-}
 export MUJOCO_PATH=$WORK/mujoco
 export LD_LIBRARY_PATH=$WORK/mujoco/lib:${LD_LIBRARY_PATH:-}
 export XLA_FLAGS="--xla_gpu_cuda_data_dir=$TACC_CUDA_DIR"
-export JAX_PLATFORMS="gpu"
+export JAX_PLATFORMS=""
 
 # Ensure all Python deps are installed
 pip install --no-cache-dir --target=$WORK/python_packages \

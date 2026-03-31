@@ -32,7 +32,7 @@ export PYTHONPATH=$WORK/python_packages:${PYTHONPATH:-}
 export MUJOCO_PATH=$WORK/mujoco
 export LD_LIBRARY_PATH=$WORK/mujoco/lib:${LD_LIBRARY_PATH:-}
 export XLA_FLAGS="--xla_gpu_cuda_data_dir=$TACC_CUDA_DIR"
-export JAX_PLATFORMS="gpu"
+export JAX_PLATFORMS=""
 
 # ---- Paths ----
 cd /home1/11386/mohammada/posterior-guided-dr
