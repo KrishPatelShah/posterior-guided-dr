@@ -20,15 +20,20 @@ mkdir -p pgdr/results/logs pgdr/checkpoints pgdr/data
 CONDITIONS="C1_uniform_dr C2_pure_sysid C3_isotropic C4_pgdr_0.5 C4_pgdr_1.0 C4_pgdr_2.0"
 SEEDS="0 1 2"
 
+# Helper: submit and extract just the numeric job ID (TACC prints banners)
+grab_jobid() {
+    "$@" 2>&1 | grep -oE '^[0-9]+$' | tail -1
+}
+
 # --- Step 1: Submit sysid job ---
-SYSID_JOB=$(sbatch --parsable pgdr/tacc/1_sysid.sh)
+SYSID_JOB=$(grab_jobid sbatch --parsable pgdr/tacc/1_sysid.sh)
 echo "Submitted sysid job: $SYSID_JOB"
 
 # --- Step 2: Submit 18 training jobs, each depends on sysid ---
 TRAIN_JOBS=""
 for cond in $CONDITIONS; do
     for seed in $SEEDS; do
-        JOB=$(sbatch --parsable \
+        JOB=$(grab_jobid sbatch --parsable \
             --dependency=afterok:${SYSID_JOB} \
             --export=ALL,CONDITION=${cond},SEED=${seed} \
             --job-name="pgdr_${cond}_s${seed}" \
@@ -42,7 +47,7 @@ done
 TRAIN_JOBS="${TRAIN_JOBS#:}"
 
 # --- Step 3: Submit eval job, depends on ALL training jobs ---
-EVAL_JOB=$(sbatch --parsable \
+EVAL_JOB=$(grab_jobid sbatch --parsable \
     --dependency=afterok:${TRAIN_JOBS} \
     pgdr/tacc/3_eval.sh)
 echo "Submitted eval job: $EVAL_JOB (after all training)"
