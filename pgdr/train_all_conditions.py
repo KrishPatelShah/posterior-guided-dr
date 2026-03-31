@@ -176,10 +176,8 @@ def train_single_condition(
 
     print(f"  {run_name}: {randomizer.describe()}")
 
-    # --- Training loop ---
-    # This integrates with MuJoCo Playground's PPO training.
-    # The key modification: at each episode reset, we sample physical
-    # parameters from the randomizer instead of using uniform DR.
+    # --- Training setup ---
+    from pgdr._ppo import PPOAgent, PPOConfig, make_obs
 
     rng = jax.random.PRNGKey(seed)
     mjx_model_default = mjx.put_model(mj_model)
@@ -188,77 +186,95 @@ def train_single_condition(
     num_envs = tcfg.get("num_envs", 4096)
     episode_length = tcfg.get("episode_length", 1000)
     total_timesteps = tcfg.get("total_timesteps", 100_000_000)
-    lr = tcfg.get("learning_rate", 3e-4)
-    gamma = tcfg.get("gamma", 0.99)
-    gae_lambda = tcfg.get("gae_lambda", 0.95)
-    clip_eps = tcfg.get("clip_eps", 0.2)
-    entropy_coef = tcfg.get("entropy_coef", 0.01)
-    value_coef = tcfg.get("value_coef", 0.5)
-    max_grad_norm = tcfg.get("max_grad_norm", 0.5)
-    num_minibatches = tcfg.get("num_minibatches", 32)
-    update_epochs = tcfg.get("update_epochs", 5)
     num_steps = tcfg.get("num_steps", 10)
+    control_dt = train_cfg.get("environment", {}).get("control_dt", 0.02)
+    sim_dt = train_cfg.get("environment", {}).get("sim_dt", 0.002)
+    action_scale = train_cfg.get("environment", {}).get("action_scale", 0.25)
 
     num_updates = total_timesteps // (num_envs * num_steps)
-
-    # --- PPO agent setup ---
-    # Initialize policy and value networks.
-    # We use a standard MLP actor-critic.
-    from pgdr._ppo import PPOAgent, PPOConfig
 
     ppo_cfg = PPOConfig(
         num_envs=num_envs,
         num_steps=num_steps,
-        learning_rate=lr,
-        gamma=gamma,
-        gae_lambda=gae_lambda,
-        clip_eps=clip_eps,
-        entropy_coef=entropy_coef,
-        value_coef=value_coef,
-        max_grad_norm=max_grad_norm,
-        num_minibatches=num_minibatches,
-        update_epochs=update_epochs,
+        learning_rate=tcfg.get("learning_rate", 3e-4),
+        gamma=tcfg.get("gamma", 0.99),
+        gae_lambda=tcfg.get("gae_lambda", 0.95),
+        clip_eps=tcfg.get("clip_eps", 0.2),
+        entropy_coef=tcfg.get("entropy_coef", 0.01),
+        value_coef=tcfg.get("value_coef", 0.5),
+        max_grad_norm=tcfg.get("max_grad_norm", 0.5),
+        num_minibatches=tcfg.get("num_minibatches", 32),
+        update_epochs=tcfg.get("update_epochs", 5),
+        action_scale=action_scale,
+        sim_dt=sim_dt,
+        control_dt=control_dt,
     )
 
-    obs_dim = mj_model.nq + mj_model.nv  # Simplified: qpos + qvel
+    # Obs dim: qpos (skip x,y = nq-2) + qvel (nv) + cmd (3)
+    obs_dim = (mj_model.nq - 2) + mj_model.nv + 3
     act_dim = mj_model.nu
 
     agent = PPOAgent(ppo_cfg, obs_dim, act_dim, rng)
+
+    # Episode management: re-randomize params every episode_length steps
+    steps_in_episode = 0
+    episode_reset_interval = episode_length // num_steps
 
     # --- Main training loop ---
     import time as time_mod
 
     t0 = time_mod.time()
-    episode_returns = []
+    best_reward = -float("inf")
+
+    # Initial environment setup
+    rng, rng_reset, rng_cmd = jax.random.split(rng, 3)
+    batched_model, _ = randomizer.apply_batch(rng_reset, mjx_model_default, num_envs)
+    batched_data = jax.vmap(mjx.make_data)(batched_model)
+
+    # Sample velocity commands: [num_envs, 3] = [vx, vy, wz]
+    cmd = jnp.concatenate([
+        jax.random.uniform(rng_cmd, (num_envs, 1), minval=-1.0, maxval=2.0),   # vx
+        jax.random.uniform(rng_cmd, (num_envs, 1), minval=-0.5, maxval=0.5),   # vy
+        jax.random.uniform(rng_cmd, (num_envs, 1), minval=-1.0, maxval=1.0),   # wz
+    ], axis=1)
 
     for update in range(num_updates):
-        rng, rng_reset, rng_step = jax.random.split(rng, 3)
+        rng, rng_step, rng_reset, rng_cmd = jax.random.split(rng, 4)
 
-        # Reset environments with randomized parameters
-        batched_model, _ = randomizer.apply_batch(
-            rng_reset, mjx_model_default, num_envs
-        )
+        # Re-randomize environments periodically (new episode)
+        if update % episode_reset_interval == 0 and update > 0:
+            batched_model, _ = randomizer.apply_batch(rng_reset, mjx_model_default, num_envs)
+            batched_data = jax.vmap(mjx.make_data)(batched_model)
+            # New random commands
+            cmd = jnp.concatenate([
+                jax.random.uniform(rng_cmd, (num_envs, 1), minval=-1.0, maxval=2.0),
+                jax.random.uniform(rng_cmd, (num_envs, 1), minval=-0.5, maxval=0.5),
+                jax.random.uniform(rng_cmd, (num_envs, 1), minval=-1.0, maxval=1.0),
+            ], axis=1)
 
         # Collect rollout
-        rollout_data = agent.collect_rollout(
-            batched_model, rng_step, episode_length, num_steps
-        )
+        rollout = agent.collect_rollout(batched_model, batched_data, cmd, rng_step)
+
+        # Update env state for next rollout
+        batched_data = rollout.pop("next_data")
 
         # PPO update
-        loss_info = agent.update(rollout_data)
+        loss_info = agent.update(rollout)
 
         if update % 100 == 0:
             elapsed = time_mod.time() - t0
             steps_done = (update + 1) * num_envs * num_steps
-            fps = steps_done / elapsed
-            mean_return = float(jnp.mean(jnp.array(
-                rollout_data.get("episode_returns", [0.0])
-            )))
-            episode_returns.append(mean_return)
+            fps = steps_done / max(elapsed, 1)
+            mean_reward = loss_info.get("mean_episode_reward", 0.0)
             print(f"    Update {update}/{num_updates}: "
-                  f"return={mean_return:.2f}  "
+                  f"reward={mean_reward:.3f}  "
                   f"loss={loss_info.get('total_loss', 0):.4f}  "
+                  f"entropy={loss_info.get('entropy', 0):.3f}  "
                   f"fps={fps:.0f}  [{elapsed:.0f}s]")
+
+            if mean_reward > best_reward:
+                best_reward = mean_reward
+                agent.save(save_dir / "best.pkl")
 
         # Save checkpoint periodically
         if update % 1000 == 0 and update > 0:
@@ -274,7 +290,7 @@ def train_single_condition(
         "status": "completed",
         "num_updates": num_updates,
         "elapsed_seconds": elapsed,
-        "episode_returns": [float(r) for r in episode_returns],
+        "best_reward": float(best_reward),
         "checkpoint_dir": str(save_dir),
     }
 

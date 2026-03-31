@@ -20,6 +20,10 @@ export LD_LIBRARY_PATH=$WORK/mujoco/lib:${LD_LIBRARY_PATH:-}
 export XLA_FLAGS="--xla_gpu_cuda_data_dir=$TACC_CUDA_DIR"
 export JAX_PLATFORMS="gpu"
 
+# Ensure all Python deps are installed
+pip install --no-cache-dir --target=$WORK/python_packages \
+    optax flax 2>/dev/null || true
+
 cd /home1/11386/mohammada/posterior-guided-dr
 MODEL_XML="/home1/11386/mohammada/posterior-guided-dr/mujoco_menagerie/booster_t1/t1.xml"
 RESULTS_DIR="pgdr/results"

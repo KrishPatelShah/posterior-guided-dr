@@ -106,9 +106,11 @@ def evaluate_velocity_tracking(
                 data, rng = carry
                 rng, action_rng = jax.random.split(rng)
 
-                obs = jnp.concatenate([data.qpos, data.qvel])
+                cmd_vec = jnp.array([target_vx, target_vy, target_wz])
+                qpos_obs = jnp.concatenate([data.qpos[2:7], data.qpos[7:]])
+                obs = jnp.concatenate([qpos_obs, data.qvel, cmd_vec])
                 action = policy_fn(obs, action_rng)
-                data = data.replace(ctrl=action)
+                data = data.replace(ctrl=action * 0.25)
 
                 def substep(d, _):
                     return mjx.step(mjx_model, d), None
@@ -396,6 +398,7 @@ def evaluate_all_conditions(
     command_sequence: list[dict],
     held_out_ref: Optional[ReferenceTrajectory] = None,
     num_episodes: int = 50,
+    perturbation_type: Optional[str] = None,
 ) -> dict:
     """
     Run the full evaluation suite across all conditions.
@@ -447,24 +450,51 @@ def evaluate_all_conditions(
     }
 
     # --- Per-condition policy evaluation ---
-    # This would iterate over trained checkpoints and evaluate each
-    # We provide the structure; actual evaluation requires trained policies.
+    from pgdr._ppo import PPOAgent, PPOConfig
+
+    mjx_model_default = mjx.put_model(mj_model)
+
+    # Inject p* into model for evaluation
+    mjx_model_eval = param_space.inject(mjx_model_default, p_star)
+
     checkpoints = Path(checkpoints_dir)
     if checkpoints.exists():
         for condition_dir in sorted(checkpoints.iterdir()):
             if not condition_dir.is_dir():
                 continue
             condition_name = condition_dir.name
-            print(f"\nEvaluating: {condition_name}")
 
-            # Load policy
-            policy_path = condition_dir / "final.pkl"
+            # Try best.pkl first, then final.pkl
+            policy_path = condition_dir / "best.pkl"
             if not policy_path.exists():
-                print(f"  Skipping (no final.pkl)")
+                policy_path = condition_dir / "final.pkl"
+            if not policy_path.exists():
+                print(f"  Skipping {condition_name} (no checkpoint)")
                 continue
 
-            # TODO: Load policy and run evaluation
-            # results[condition_name] = evaluate_velocity_tracking(...)
+            print(f"\nEvaluating: {condition_name}")
+
+            # Load agent
+            obs_dim = (mj_model.nq - 2) + mj_model.nv + 3
+            act_dim = mj_model.nu
+            agent = PPOAgent(PPOConfig(), obs_dim, act_dim, jax.random.PRNGKey(0))
+            agent.load(policy_path)
+            policy_fn = agent.make_policy_fn()
+
+            # Evaluate on nominal (Sim A) parameters
+            eval_model = mjx_model_eval
+            if perturbation_type:
+                eval_model = apply_perturbation(eval_model, mj_model, perturbation_type)
+
+            vel_results = evaluate_velocity_tracking(
+                policy_fn, eval_model, command_sequence,
+                control_dt=0.02, num_episodes=num_episodes,
+            )
+            results[condition_name] = vel_results
+            print(f"  RMS total: {vel_results['rms_total']:.4f} "
+                  f"(vx={vel_results['rms_vx']:.4f}, "
+                  f"vy={vel_results['rms_vy']:.4f}, "
+                  f"wz={vel_results['rms_wz']:.4f})")
 
     return results
 
@@ -552,6 +582,7 @@ if __name__ == "__main__":
         results = evaluate_all_conditions(
             mj_model, ps, p_star, Sigma, p_true,
             args.checkpoints, commands,
+            perturbation_type=args.perturbation,
         )
 
         out = Path(args.output)
