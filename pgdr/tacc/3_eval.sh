@@ -21,7 +21,7 @@ export XLA_FLAGS="--xla_gpu_cuda_data_dir=$TACC_CUDA_DIR"
 export JAX_PLATFORMS=""
 
 cd /home1/11386/mohammada/posterior-guided-dr
-MODEL_XML="/home1/11386/mohammada/posterior-guided-dr/mujoco_menagerie/booster_t1/t1.xml"
+MODEL_XML="/home1/11386/mohammada/posterior-guided-dr/mujoco_menagerie/booster_t1/scene.xml"
 RESULTS_DIR="pgdr/results"
 DATA_DIR="pgdr/data"
 CHECKPOINTS_DIR="pgdr/checkpoints"
