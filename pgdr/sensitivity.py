@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 from typing import Optional
 import warnings
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -105,7 +106,7 @@ def _preflight_checks(
     return warnings_list
 
 
-@jax.jit
+@partial(jax.jit, static_argnames=("n_steps",))
 def _rollout_trajectory(
     model: mjx.Model,
     data: mjx.Data,
