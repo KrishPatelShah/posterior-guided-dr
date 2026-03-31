@@ -33,7 +33,8 @@ CONFIG="pgdr/config/sysid_config.yaml"
 mkdir -p "$RESULTS_DIR/logs" "$DATA_DIR"
 
 echo ">>> STEP 1: Sensitivity Analysis"
-python -m pgdr.sensitivity \
+echo "    Backend: CPU (avoids GPU cuSolver instability in MJX preflight)"
+JAX_PLATFORMS=cpu python -m pgdr.sensitivity \
     --model-xml "$MODEL_XML" \
     --perturbation 0.2 \
     --output "$RESULTS_DIR/sensitivity_ranking.json" \

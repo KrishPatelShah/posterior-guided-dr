@@ -60,8 +60,9 @@ echo "============================================================"
 echo ""
 echo ">>> STEP 1/6: Sensitivity Analysis"
 echo "    Output: $RESULTS_DIR/sensitivity_ranking.json"
+echo "    Backend: CPU (avoids GPU cuSolver instability in MJX preflight)"
 
-python -m pgdr.sensitivity \
+JAX_PLATFORMS=cpu python -m pgdr.sensitivity \
     --model-xml "$MODEL_XML" \
     --perturbation 0.2 \
     --output "$RESULTS_DIR/sensitivity_ranking.json" \
