@@ -16,142 +16,87 @@ import json
 from pathlib import Path
 from typing import Optional
 
-import jax
-import jax.numpy as jnp
 import mujoco
-from mujoco import mjx
+import mujoco_warp
+import warp as wp
+import numpy as np
 
 from pgdr.param_space import ParamSpace, build_t1_param_space
+from pgdr.sysid import _warp_model_with_params, _rollout_warp
 
 
-@jax.jit
-def _rollout_trajectory(
-    model: mjx.Model,
-    data: mjx.Data,
-    actions: jnp.ndarray,
-    n_steps: int,
-) -> dict[str, jnp.ndarray]:
-    """
-    Open-loop rollout: apply a fixed action sequence and record trajectory.
-
-    Args:
-        model:   MJX model (possibly with perturbed parameters).
-        data:    MJX data (initial state).
-        actions: [T, nu] action sequence.
-        n_steps: Number of physics substeps per control step.
-
-    Returns:
-        Dictionary with 'q' [T, nq] and 'qdot' [T, nv].
-    """
-    def step_fn(carry, action):
-        data = carry
-        # Apply action to data.ctrl
-        data = data.replace(ctrl=action)
-        # Step physics n_steps times
-        def substep(d, _):
-            return mjx.step(model, d), None
-        data, _ = jax.lax.scan(substep, data, None, length=n_steps)
-        return data, jnp.concatenate([data.qpos, data.qvel])
-
-    _, trajectory = jax.lax.scan(step_fn, data, actions)
-
-    nq = model.nq
-    return {
-        "q": trajectory[:, :nq],
-        "qdot": trajectory[:, nq:],
-    }
+def _traj_to_dict(q: np.ndarray, qdot: np.ndarray) -> dict:
+    return {"q": q, "qdot": qdot}
 
 
 def compute_trajectory_divergence(
-    traj_perturbed: dict[str, jnp.ndarray],
-    traj_baseline: dict[str, jnp.ndarray],
+    traj_perturbed: dict,
+    traj_baseline: dict,
     w_q: float = 1.0,
     w_qdot: float = 0.1,
 ) -> float:
-    """
-    MSE between a perturbed trajectory and the unperturbed baseline.
-
-    This is the same loss function used in sys-id (Eq. 1 of the proposal),
-    ensuring sensitivity is measured in the same metric space.
-    """
-    q_err = jnp.mean((traj_perturbed["q"] - traj_baseline["q"]) ** 2)
-    qdot_err = jnp.mean((traj_perturbed["qdot"] - traj_baseline["qdot"]) ** 2)
-    return w_q * q_err + w_qdot * qdot_err
+    q_err    = np.mean((traj_perturbed["q"]    - traj_baseline["q"])    ** 2)
+    qdot_err = np.mean((traj_perturbed["qdot"] - traj_baseline["qdot"]) ** 2)
+    return float(w_q * q_err + w_qdot * qdot_err)
 
 
 def run_sensitivity_analysis(
     mj_model: mujoco.MjModel,
     param_space: ParamSpace,
-    actions: jnp.ndarray,
+    actions: np.ndarray,
     perturbation: float = 0.2,
     n_substeps: int = 10,
     rng_seed: int = 0,
 ) -> dict:
     """
-    One-at-a-time perturbation study.
+    One-at-a-time perturbation study using mujoco_warp parallel worlds.
 
-    For each parameter i:
-        - Set p[i] = +perturbation (in normalized space), all others at 0
-        - Roll out, compute divergence from baseline
-        - Repeat with p[i] = -perturbation
-        - Record max divergence across ± directions
-
-    All 2*d perturbations are batched into a single vectorized rollout.
-
-    Args:
-        mj_model:     MuJoCo model (CPU).
-        param_space:  Full (unreduced) parameter space.
-        actions:      [T, nu] reference action sequence.
-        perturbation: Perturbation magnitude in normalized units (0.2 = 20%).
-        n_substeps:   Physics substeps per control step.
-        rng_seed:     For initial state.
-
-    Returns:
-        Dictionary with sensitivity scores and ranking.
+    Builds 2*d+1 perturbation vectors (baseline + ± per param), runs them
+    all in one batched warp rollout, then scores by trajectory divergence.
     """
+    wp.init()
     d = param_space.d
-    rng = jax.random.PRNGKey(rng_seed)
+    actions_np = np.array(actions)
 
-    # Put MJX model on device
-    mjx_model_default = mjx.put_model(mj_model)
-    mjx_data_default = mjx.put_data(mj_model, mujoco.MjData(mj_model))
+    # Build perturbation matrix: row 0 = baseline (zeros),
+    # rows 1..d = +perturbation on param i, rows d+1..2d = -perturbation
+    perturb_vecs = np.zeros((2 * d + 1, d))
+    for i in range(d):
+        perturb_vecs[1 + i,     i] =  perturbation
+        perturb_vecs[1 + d + i, i] = -perturbation
 
-    # --- Baseline rollout (all params at default) ---
-    baseline_traj = _rollout_trajectory(
-        mjx_model_default, mjx_data_default, actions, n_substeps
-    )
+    nworld = len(perturb_vecs)
 
-    # --- Build perturbation vectors: [2*d, d] ---
-    # First d rows: +perturbation on each param
-    # Next d rows: -perturbation on each param
-    perturbation_vecs = jnp.zeros((2 * d, d))
-    perturbation_vecs = perturbation_vecs.at[jnp.arange(d), jnp.arange(d)].set(perturbation)
-    perturbation_vecs = perturbation_vecs.at[d + jnp.arange(d), jnp.arange(d)].set(-perturbation)
+    # Single batched warp rollout — all (2d+1) worlds in parallel
+    warp_model = mujoco_warp.put_model(mj_model)
+    warp_model = _warp_model_with_params(warp_model, param_space, perturb_vecs)
+    warp_data  = mujoco_warp.make_data(mj_model, nworld=nworld)
 
-    # --- Batch rollout of all perturbations ---
-    def rollout_one_perturbation(p_norm):
-        """Rollout with a single perturbed parameter vector."""
-        model_perturbed = param_space.inject(mjx_model_default, p_norm)
-        traj = _rollout_trajectory(model_perturbed, mjx_data_default, actions, n_substeps)
-        return compute_trajectory_divergence(traj, baseline_traj)
+    q_traj, qdot_traj = _rollout_warp(warp_model, warp_data, actions_np, n_substeps)
+    # q_traj: [nworld, T, nq]
 
-    # vmap over all perturbation vectors
-    all_divergences = jax.vmap(rollout_one_perturbation)(perturbation_vecs)
+    baseline_traj = _traj_to_dict(q_traj[0], qdot_traj[0])
 
-    # --- Compute sensitivity scores ---
-    # Take the max of +/- perturbation for each parameter
-    pos_divergences = all_divergences[:d]
-    neg_divergences = all_divergences[d:]
-    sensitivity_scores = jnp.maximum(pos_divergences, neg_divergences)
+    pos_div = np.array([
+        compute_trajectory_divergence(
+            _traj_to_dict(q_traj[1 + i], qdot_traj[1 + i]),
+            baseline_traj,
+        )
+        for i in range(d)
+    ])
+    neg_div = np.array([
+        compute_trajectory_divergence(
+            _traj_to_dict(q_traj[1 + d + i], qdot_traj[1 + d + i]),
+            baseline_traj,
+        )
+        for i in range(d)
+    ])
 
-    # --- Rank parameters ---
-    ranking = jnp.argsort(-sensitivity_scores)  # Descending
+    sensitivity_scores = np.maximum(pos_div, neg_div)
+    ranking = np.argsort(-sensitivity_scores)
 
-    results = {
-        "sensitivity_scores": {
-            param_space.params[i].name: float(sensitivity_scores[i])
-            for i in range(d)
-        },
+    return {
+        "sensitivity_scores": {param_space.params[i].name: float(sensitivity_scores[i]) for i in range(d)},
         "ranking": [
             {
                 "rank": int(r + 1),
@@ -164,17 +109,9 @@ def run_sensitivity_analysis(
         ],
         "perturbation": perturbation,
         "total_params": d,
-        "positive_divergences": {
-            param_space.params[i].name: float(pos_divergences[i])
-            for i in range(d)
-        },
-        "negative_divergences": {
-            param_space.params[i].name: float(neg_divergences[i])
-            for i in range(d)
-        },
+        "positive_divergences": {param_space.params[i].name: float(pos_div[i]) for i in range(d)},
+        "negative_divergences": {param_space.params[i].name: float(neg_div[i]) for i in range(d)},
     }
-
-    return results
 
 
 def reduce_param_space(
@@ -196,20 +133,19 @@ def reduce_param_space(
     Returns:
         (reduced_ParamSpace, kept_indices)
     """
-    scores = jnp.array([
+    scores = np.array([
         sensitivity_results["sensitivity_scores"][p.name]
         for p in param_space.params
     ])
 
     if keep_top_k is not None:
-        kept = jnp.argsort(-scores)[:keep_top_k]
-        kept = sorted(kept.tolist())
+        kept = sorted(np.argsort(-scores)[:keep_top_k].tolist())
     else:
         if threshold is None:
             # Adaptive: keep params above (mean - 1 std), but at least 50%
-            mean_s = float(jnp.mean(scores))
-            std_s = float(jnp.std(scores))
-            threshold = max(mean_s - std_s, float(jnp.sort(scores)[len(scores) // 2]))
+            mean_s = float(np.mean(scores))
+            std_s = float(np.std(scores))
+            threshold = max(mean_s - std_s, float(np.sort(scores)[len(scores) // 2]))
         kept = [i for i in range(len(scores)) if float(scores[i]) >= threshold]
 
     return param_space.select(kept), kept
@@ -240,15 +176,14 @@ if __name__ == "__main__":
 
     # Load or generate actions
     if args.actions:
-        actions = jnp.load(args.actions)
+        actions = np.load(args.actions)
     else:
         # Generate a diverse action sequence: 10 seconds at 50 Hz
         T = 500
-        rng = jax.random.PRNGKey(0)
         # Sinusoidal actions across joints to excite all modes
-        t = jnp.linspace(0, 10 * jnp.pi, T)
-        freqs = jnp.linspace(0.5, 3.0, mj_model.nu)
-        actions = 0.3 * jnp.sin(t[:, None] * freqs[None, :])
+        t = np.linspace(0, 10 * np.pi, T)
+        freqs = np.linspace(0.5, 3.0, mj_model.nu)
+        actions = 0.3 * np.sin(t[:, None] * freqs[None, :])
 
     print(f"Running sensitivity analysis: {ps.d} parameters, "
           f"perturbation={args.perturbation}")

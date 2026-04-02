@@ -25,7 +25,8 @@ from typing import Optional
 import jax
 import jax.numpy as jnp
 import mujoco
-from mujoco import mjx
+import mujoco_warp
+import warp as wp
 import numpy as np
 import yaml
 
@@ -81,22 +82,21 @@ class SysIdConfig:
 @dataclass
 class ReferenceTrajectory:
     """Collected reference trajectory for identification."""
-    q: jnp.ndarray       # [T, nq] joint positions
-    qdot: jnp.ndarray    # [T, nv] joint velocities
-    actions: jnp.ndarray # [T, nu] applied actions
-    dt: float            # Control timestep
+    q: np.ndarray       # [T, nq] joint positions
+    qdot: np.ndarray    # [T, nv] joint velocities
+    actions: np.ndarray # [T, nu] applied actions
+    dt: float           # Control timestep
 
     def save(self, path: str) -> None:
-        np.savez(path, q=np.array(self.q), qdot=np.array(self.qdot),
-                 actions=np.array(self.actions), dt=self.dt)
+        np.savez(path, q=self.q, qdot=self.qdot, actions=self.actions, dt=self.dt)
 
     @classmethod
     def load(cls, path: str) -> ReferenceTrajectory:
         data = np.load(path)
         return cls(
-            q=jnp.array(data["q"]),
-            qdot=jnp.array(data["qdot"]),
-            actions=jnp.array(data["actions"]),
+            q=data["q"],
+            qdot=data["qdot"],
+            actions=data["actions"],
             dt=float(data["dt"]),
         )
 
@@ -110,7 +110,7 @@ def create_sim_a(
     param_space: ParamSpace,
     perturbation_scale: float = 0.15,
     seed: int = 0,
-) -> tuple[jnp.ndarray, jnp.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Create "Sim A" by perturbing the default T1 model.
 
@@ -128,140 +128,170 @@ def create_sim_a(
         (p_true_normalized, p_true_physical):
             Ground truth parameter vector in both spaces.
     """
-    rng = jax.random.PRNGKey(seed)
+    rng = np.random.default_rng(seed)
     d = param_space.d
 
     # Random perturbation in normalized space
-    p_true_norm = jax.random.uniform(
-        rng, shape=(d,), minval=-perturbation_scale, maxval=perturbation_scale
-    )
+    p_true_norm = rng.uniform(-perturbation_scale, perturbation_scale, size=(d,))
 
-    p_true_phys = param_space.to_physical_vec(p_true_norm)
+    p_true_phys = param_space.to_physical_np(p_true_norm)
     return p_true_norm, p_true_phys
+
+
+def _warp_model_with_params(
+    base_model: "mujoco_warp._src.types.Model",
+    param_space: ParamSpace,
+    candidates: np.ndarray,
+) -> "mujoco_warp._src.types.Model":
+    """
+    Build a mujoco_warp Model with one parameter set per world.
+
+    The warp kernel indexes model fields as model_field[worldid % field.shape[0]],
+    so setting field.shape[0] == nworld gives each world its own parameters.
+
+    Args:
+        base_model:  Single-world warp Model from mujoco_warp.put_model().
+        param_space: Parameter space definition.
+        candidates:  [nworld, d] array of normalized parameter vectors.
+    """
+    nworld = len(candidates)
+
+    for field in ["dof_damping", "body_mass", "geom_friction",
+                  "geom_solref", "geom_solimp", "actuator_gainprm"]:
+        wpa = getattr(base_model, field)
+        base_np = wpa.numpy()                                    # (1, n) or (1, n, vec)
+        tiled = np.tile(base_np, (nworld,) + (1,) * (base_np.ndim - 1))  # (nworld, ...)
+        setattr(base_model, field,
+                wp.array(tiled, shape=(nworld, base_np.shape[1]), dtype=wpa.dtype)
+                if base_np.ndim == 2 else
+                wp.array(tiled.reshape(nworld, base_np.shape[1], -1),
+                         shape=(nworld, base_np.shape[1]), dtype=wpa.dtype))
+
+    # Inject per-world physical params
+    for i, p_norm in enumerate(candidates):
+        p_phys = param_space.to_physical_np(p_norm)
+        for j, param in enumerate(param_space.params):
+            arr = getattr(base_model, param.mjx_field).numpy()
+            if arr.ndim == 2:
+                arr[i, param.index] = p_phys[j]
+            else:
+                arr[i, param.index, param.col] = p_phys[j]
+            getattr(base_model, param.mjx_field).assign(arr)
+
+    return base_model
+
+
+def _rollout_warp(
+    model: "mujoco_warp._src.types.Model",
+    data: "mujoco_warp._src.types.Data",
+    actions: np.ndarray,
+    n_substeps: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Open-loop rollout using mujoco_warp.step for all worlds in parallel.
+
+    Args:
+        model:       Warp model (nworld parameter sets).
+        data:        Warp data (nworld initial states).
+        actions:     [T, nu] action sequence (same for all worlds).
+        n_substeps:  Physics substeps per control step.
+
+    Returns:
+        q    [nworld, T, nq]
+        qdot [nworld, T, nv]
+    """
+    nworld = data.qpos.shape[0]
+    nq = data.qpos.shape[1]
+    nv = data.qvel.shape[1]
+    T = len(actions)
+
+    q_traj    = np.zeros((nworld, T, nq))
+    qdot_traj = np.zeros((nworld, T, nv))
+
+    ctrl_buf = data.ctrl.numpy()
+    for t, action in enumerate(actions):
+        ctrl_buf[:] = action[None, :]           # broadcast action to all worlds
+        data.ctrl.assign(ctrl_buf)
+        for _ in range(n_substeps):
+            mujoco_warp.step(model, data)
+        q_traj[:, t, :]    = data.qpos.numpy()
+        qdot_traj[:, t, :] = data.qvel.numpy()
+
+    return q_traj, qdot_traj
 
 
 def collect_reference_trajectory(
     mj_model: mujoco.MjModel,
     param_space: ParamSpace,
-    p_normalized: jnp.ndarray,
-    actions: jnp.ndarray,
+    p_normalized,
+    actions,
     n_substeps: int = 10,
     foot_geom_ids: Optional[list[int]] = None,
 ) -> ReferenceTrajectory:
     """
-    Roll out the simulation with given parameters and action sequence,
-    recording joint positions and velocities as the reference trajectory.
-
-    Args:
-        mj_model:       Base MuJoCo model.
-        param_space:    Parameter space.
-        p_normalized:   Parameter vector to use (normalized).
-        actions:        [T, nu] action sequence.
-        n_substeps:     Physics substeps per control step.
-        foot_geom_ids:  Foot geom IDs for contact param propagation.
-
-    Returns:
-        ReferenceTrajectory with recorded q, qdot, actions.
+    Roll out the simulation with given parameters, using mujoco_warp (CPU).
+    Returns a ReferenceTrajectory with recorded q, qdot, actions.
     """
-    mjx_model = mjx.put_model(mj_model)
-    mjx_model = param_space.inject(mjx_model, p_normalized)
-    if foot_geom_ids:
-        mjx_model = inject_contact_params_to_all_feet(
-            mjx_model, foot_geom_ids, param_space, p_normalized
-        )
+    wp.init()
+    actions_np = np.array(actions)
+    p_norm_np  = np.array(p_normalized).reshape(1, -1)   # (1, d) — single world
 
-    mjx_data = mjx.put_data(mj_model, mujoco.MjData(mj_model))
+    warp_model = mujoco_warp.put_model(mj_model)
+    warp_model = _warp_model_with_params(warp_model, param_space, p_norm_np)
+    warp_data  = mujoco_warp.make_data(mj_model, nworld=1)
 
-    # Rollout
-    def step_fn(data, action):
-        data = data.replace(ctrl=action)
-        def substep(d, _):
-            return mjx.step(mjx_model, d), None
-        data, _ = jax.lax.scan(substep, data, None, length=n_substeps)
-        return data, jnp.concatenate([data.qpos, data.qvel])
-
-    _, trajectory = jax.lax.scan(step_fn, mjx_data, actions)
-
-    nq = mj_model.nq
-    q = trajectory[:, :nq]
-    qdot = trajectory[:, nq:]
+    q, qdot = _rollout_warp(warp_model, warp_data, actions_np, n_substeps)
+    # q shape: (1, T, nq) → squeeze world dim
     dt = float(mj_model.opt.timestep * n_substeps)
-
-    return ReferenceTrajectory(q=q, qdot=qdot, actions=actions, dt=dt)
+    return ReferenceTrajectory(
+        q=q[0],
+        qdot=qdot[0],
+        actions=actions_np,
+        dt=dt,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Loss function
 # ---------------------------------------------------------------------------
 
-def _single_candidate_loss(
-    p_normalized: jnp.ndarray,
-    default_model: mjx.Model,
-    default_data: mjx.Data,
+def batch_evaluate_warp(
+    candidates: np.ndarray,
+    mj_model: mujoco.MjModel,
     param_space: ParamSpace,
     ref: ReferenceTrajectory,
     n_substeps: int,
     w_q: float,
     w_qdot: float,
-) -> float:
+) -> np.ndarray:
     """
-    Loss for a single candidate parameter vector.
-
-    Injects params into model, rolls out with the same actions as the
-    reference trajectory, and computes MSE on q and qdot.
-
-    This is Eq. (1) of the proposal:
-        L(p) = (1/T) Σ_t [ w_q ||q_sim(p) - q_ref||² + w_qdot ||qdot_sim - qdot_ref||² ]
-    """
-    model = param_space.inject(default_model, p_normalized)
-
-    def step_fn(data, action):
-        data = data.replace(ctrl=action)
-        def substep(d, _):
-            return mjx.step(model, d), None
-        data, _ = jax.lax.scan(substep, data, None, length=n_substeps)
-        return data, jnp.concatenate([data.qpos, data.qvel])
-
-    _, trajectory = jax.lax.scan(step_fn, default_data, ref.actions)
-
-    nq = default_model.nq
-    q_sim = trajectory[:, :nq]
-    qdot_sim = trajectory[:, nq:]
-
-    loss = (
-        w_q * jnp.mean((q_sim - ref.q) ** 2) +
-        w_qdot * jnp.mean((qdot_sim - ref.qdot) ** 2)
-    )
-    return loss
-
-
-def batch_evaluate(
-    candidates: jnp.ndarray,
-    default_model: mjx.Model,
-    default_data: mjx.Data,
-    param_space: ParamSpace,
-    ref: ReferenceTrajectory,
-    n_substeps: int,
-    w_q: float,
-    w_qdot: float,
-) -> jnp.ndarray:
-    """
-    Evaluate all candidate parameter vectors in parallel via jax.vmap.
+    Evaluate all candidate parameter vectors in parallel using mujoco_warp.
+    Each candidate maps to one "world"; all worlds step simultaneously.
 
     Args:
-        candidates: [popsize, d] array of normalized parameter vectors.
-        Other args: see _single_candidate_loss.
+        candidates: [popsize, d] normalized parameter vectors.
 
     Returns:
-        [popsize] array of loss values.
+        [popsize] loss values.
     """
-    eval_fn = jax.vmap(
-        lambda p: _single_candidate_loss(
-            p, default_model, default_data, param_space,
-            ref, n_substeps, w_q, w_qdot,
-        )
+    nworld = len(candidates)
+    ref_q    = np.array(ref.q)      # [T, nq]
+    ref_qdot = np.array(ref.qdot)   # [T, nv]
+    actions  = np.array(ref.actions)  # [T, nu]
+
+    # Build per-world model and initial data
+    warp_model = mujoco_warp.put_model(mj_model)
+    warp_model = _warp_model_with_params(warp_model, param_space, candidates)
+    warp_data  = mujoco_warp.make_data(mj_model, nworld=nworld)
+
+    q_sim, qdot_sim = _rollout_warp(warp_model, warp_data, actions, n_substeps)
+    # q_sim: [nworld, T, nq]
+
+    losses = (
+        w_q    * np.mean((q_sim    - ref_q[None])    ** 2, axis=(1, 2)) +
+        w_qdot * np.mean((qdot_sim - ref_qdot[None]) ** 2, axis=(1, 2))
     )
-    return eval_fn(candidates)
+    return losses
 
 
 # ---------------------------------------------------------------------------
@@ -274,61 +304,94 @@ def run_identification(
     ref: ReferenceTrajectory,
     config: SysIdConfig,
     n_substeps: int = 10,
-) -> tuple[jnp.ndarray, jnp.ndarray, dict]:
+) -> tuple[np.ndarray, np.ndarray, dict]:
     """
-    Main identification loop.
+    Main identification loop: CMA-ES + mujoco_warp parallel rollouts.
 
-    Runs CMA-ES to find p* and extract Σ.
+    Each CMA-ES generation evaluates `popsize` candidates simultaneously
+    by running one world per candidate inside mujoco_warp.
 
-    Args:
-        mj_model:     Default MuJoCo model.
-        param_space:  (Possibly reduced) parameter space.
-        ref:          Reference trajectory to match.
-        config:       CMA-ES hyperparameters.
-        n_substeps:   Physics substeps per control step.
-
-    Returns:
-        p_star:  [d] identified parameter vector (normalized).
-        Sigma:   [d, d] covariance matrix (normalized space).
-        info:    Dictionary with convergence history and diagnostics.
+    Returns p_star [d], Sigma [d, d], info dict.
     """
+    from cmaes import CMA
+
+    wp.init()
     d = param_space.d
-    rng = jax.random.PRNGKey(config.seed)
 
-    mjx_model = mjx.put_model(mj_model)
-    mjx_data = mjx.put_data(mj_model, mujoco.MjData(mj_model))
-
-    # JIT the batch evaluation
-    @jax.jit
-    def evaluate_batch(candidates):
-        return batch_evaluate(
-            candidates, mjx_model, mjx_data, param_space,
-            ref, n_substeps, config.w_q, config.w_qdot,
+    def evaluate_batch(candidates: np.ndarray) -> np.ndarray:
+        return batch_evaluate_warp(
+            candidates, mj_model, param_space, ref,
+            n_substeps, config.w_q, config.w_qdot,
         )
 
-    # --- Try evosax first ---
-    try:
-        import evosax
-        return _run_with_evosax(
-            evaluate_batch, d, config, rng,
-        )
-    except ImportError:
-        pass
+    return _run_with_cmaes_warp(evaluate_batch, d, config)
 
-    # --- Fallback: cmaes Python package ---
-    try:
-        import cmaes as cmaes_pkg
-        return _run_with_cmaes_pkg(
-            evaluate_batch, d, config,
-        )
-    except ImportError:
-        pass
 
-    raise ImportError(
-        "Neither evosax nor cmaes package found. Install one:\n"
-        "  pip install evosax   (JAX-native, preferred)\n"
-        "  pip install cmaes    (pure Python fallback)"
+def _run_with_cmaes_warp(
+    evaluate_fn,
+    d: int,
+    config: SysIdConfig,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """CMA-ES loop driven by the `cmaes` package, evaluation via mujoco_warp."""
+    from cmaes import CMA
+
+    optimizer = CMA(
+        mean=np.zeros(d),
+        sigma=config.sigma_init,
+        population_size=config.popsize,
+        seed=config.seed,
     )
+
+    history = {"generation": [], "best_loss": [], "mean_loss": [], "sigma": []}
+    best_loss = float("inf")
+    patience_counter = 0
+    t0 = time.time()
+
+    for gen in range(config.num_generations):
+        solutions = [optimizer.ask() for _ in range(config.popsize)]
+        candidates = np.array(solutions)
+
+        losses = evaluate_fn(candidates)
+
+        optimizer.tell([(solutions[i], float(losses[i])) for i in range(config.popsize)])
+
+        gen_best = float(np.min(losses))
+        gen_mean = float(np.mean(losses))
+        sigma_val = float(optimizer._sigma)
+
+        history["generation"].append(gen)
+        history["best_loss"].append(gen_best)
+        history["mean_loss"].append(gen_mean)
+        history["sigma"].append(sigma_val)
+
+        if gen_best < best_loss - config.convergence_tol:
+            best_loss = gen_best
+            patience_counter = 0
+        else:
+            patience_counter += 1
+
+        if patience_counter >= config.convergence_patience:
+            print(f"  Converged at generation {gen} (patience exhausted)")
+            break
+
+        elapsed = time.time() - t0
+        print(f"  Gen {gen:4d}: best={gen_best:.6f}  mean={gen_mean:.6f}  "
+              f"sigma={sigma_val:.4f}  [{elapsed:.1f}s]")
+
+    p_star = np.array(optimizer._mean)
+    sigma_sq = float(optimizer._sigma) ** 2
+    Sigma = sigma_sq * np.array(optimizer._C) + config.regularization_eps * np.eye(d)
+
+    elapsed = time.time() - t0
+    info = {
+        "history": history,
+        "num_generations_run": len(history["generation"]),
+        "final_loss": float(best_loss),
+        "elapsed_seconds": elapsed,
+        "method": "cmaes_warp",
+    }
+    print(f"  Done: loss={best_loss:.6f}, {len(history['generation'])} gens, {elapsed:.1f}s")
+    return p_star, Sigma, info
 
 
 def _run_with_evosax(
@@ -604,7 +667,7 @@ def _generate_action_sequence(
     mj_model: mujoco.MjModel,
     commands_config: list[dict],
     control_dt: float,
-) -> jnp.ndarray:
+) -> np.ndarray:
     """
     Generate an open-loop action sequence from scripted velocity commands.
 
@@ -621,7 +684,7 @@ def _generate_action_sequence(
     for cmd in commands_config:
         duration = cmd["duration"]
         n_steps = int(duration / control_dt)
-        t = jnp.linspace(0, duration, n_steps)
+        t = np.linspace(0, duration, n_steps)
 
         # Simple sinusoidal action pattern scaled by velocity
         speed = abs(cmd.get("vx", 0)) + abs(cmd.get("vy", 0)) + abs(cmd.get("wz", 0))
@@ -629,11 +692,11 @@ def _generate_action_sequence(
         amplitude = 0.2 * max(speed, 0.1)
 
         # Distribute across joints with phase offsets
-        phases = jnp.linspace(0, 2 * jnp.pi, nu, endpoint=False)
-        action_block = amplitude * jnp.sin(freq * t[:, None] + phases[None, :])
+        phases = np.linspace(0, 2 * np.pi, nu, endpoint=False)
+        action_block = amplitude * np.sin(freq * t[:, None] + phases[None, :])
         actions_list.append(action_block)
 
-    return jnp.concatenate(actions_list, axis=0)
+    return np.concatenate(actions_list, axis=0)
 
 
 if __name__ == "__main__":
@@ -682,13 +745,13 @@ if __name__ == "__main__":
         )
         out = Path(args.output)
         out.parent.mkdir(parents=True, exist_ok=True)
-        jnp.save(str(out), p_true_norm)
+        np.save(str(out), p_true_norm)
         print(f"Saved Sim A ground truth ({ps.d} params) to {out}")
 
     elif args.command == "collect-reference":
         mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
         ps = build_t1_param_space(mj_model)
-        p_true_norm = jnp.load(args.sim_a_params)
+        p_true_norm = np.load(args.sim_a_params)
 
         cfg = SysIdConfig.from_yaml(args.config)
 
@@ -728,15 +791,15 @@ if __name__ == "__main__":
         # Save results
         for path in [args.output_p_star, args.output_sigma]:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        jnp.save(args.output_p_star, p_star)
-        jnp.save(args.output_sigma, Sigma)
+        np.save(args.output_p_star, p_star)
+        np.save(args.output_sigma, Sigma)
 
         print(f"Saved p* to {args.output_p_star}")
         print(f"Saved Σ ({Sigma.shape}) to {args.output_sigma}")
         print(f"Final loss: {info['final_loss']:.6f}")
-        print(f"Covariance trace: {float(jnp.trace(Sigma)):.4f}")
+        print(f"Covariance trace: {float(np.trace(Sigma)):.4f}")
         print(f"Covariance rank (>1e-6): "
-              f"{int(jnp.sum(jnp.linalg.eigvalsh(Sigma) > 1e-6))}/{ps.d}")
+              f"{int(np.sum(np.linalg.eigvalsh(Sigma) > 1e-6))}/{ps.d}")
 
     else:
         parser.print_help()
