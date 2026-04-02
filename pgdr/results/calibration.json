@@ -1,0 +1,426 @@
+{
+  "per_param": [
+    {
+      "name": "friction_AAHead_yaw",
+      "group": "friction",
+      "uncertainty": 0.04915756530792072,
+      "sq_error": 0.003242705437404861
+    },
+    {
+      "name": "friction_Head_pitch",
+      "group": "friction",
+      "uncertainty": 0.049566304613180526,
+      "sq_error": 0.0012529493857484288
+    },
+    {
+      "name": "friction_Left_Shoulder_Pitch",
+      "group": "friction",
+      "uncertainty": 0.049998278759471715,
+      "sq_error": 0.057437546700807
+    },
+    {
+      "name": "friction_Left_Shoulder_Roll",
+      "group": "friction",
+      "uncertainty": 0.04967821311101366,
+      "sq_error": 0.3620045287180435
+    },
+    {
+      "name": "friction_Left_Elbow_Pitch",
+      "group": "friction",
+      "uncertainty": 0.04958040597667645,
+      "sq_error": 0.002700380685863049
+    },
+    {
+      "name": "friction_Left_Elbow_Yaw",
+      "group": "friction",
+      "uncertainty": 0.049896713390144426,
+      "sq_error": 0.44630120708346316
+    },
+    {
+      "name": "friction_Right_Shoulder_Pitch",
+      "group": "friction",
+      "uncertainty": 0.04946874710956683,
+      "sq_error": 2.774815645930031e-05
+    },
+    {
+      "name": "friction_Right_Shoulder_Roll",
+      "group": "friction",
+      "uncertainty": 0.049797310267928115,
+      "sq_error": 0.021494821014100166
+    },
+    {
+      "name": "friction_Right_Elbow_Pitch",
+      "group": "friction",
+      "uncertainty": 0.04958731886743862,
+      "sq_error": 0.02395751966249387
+    },
+    {
+      "name": "friction_Right_Elbow_Yaw",
+      "group": "friction",
+      "uncertainty": 0.04972223237101823,
+      "sq_error": 0.1881688978598681
+    },
+    {
+      "name": "friction_Waist",
+      "group": "friction",
+      "uncertainty": 0.04975184761284434,
+      "sq_error": 0.47760447763520153
+    },
+    {
+      "name": "friction_Left_Hip_Pitch",
+      "group": "friction",
+      "uncertainty": 0.04945151430574338,
+      "sq_error": 0.13894521479182456
+    },
+    {
+      "name": "friction_Left_Hip_Roll",
+      "group": "friction",
+      "uncertainty": 0.04948377729091155,
+      "sq_error": 0.11080275919742086
+    },
+    {
+      "name": "friction_Left_Hip_Yaw",
+      "group": "friction",
+      "uncertainty": 0.049692710065119765,
+      "sq_error": 0.03091636864385527
+    },
+    {
+      "name": "friction_Left_Knee_Pitch",
+      "group": "friction",
+      "uncertainty": 0.049588266247983466,
+      "sq_error": 0.006400942644672958
+    },
+    {
+      "name": "friction_Left_Ankle_Pitch",
+      "group": "friction",
+      "uncertainty": 0.05008023520420926,
+      "sq_error": 0.8568609539557712
+    },
+    {
+      "name": "friction_Left_Ankle_Roll",
+      "group": "friction",
+      "uncertainty": 0.049564934016667055,
+      "sq_error": 0.026332509712846047
+    },
+    {
+      "name": "friction_Right_Hip_Pitch",
+      "group": "friction",
+      "uncertainty": 0.049557736250576405,
+      "sq_error": 1.1950424547001238e-06
+    },
+    {
+      "name": "friction_Right_Hip_Roll",
+      "group": "friction",
+      "uncertainty": 0.049611519325360794,
+      "sq_error": 0.0006631366970836713
+    },
+    {
+      "name": "friction_Right_Hip_Yaw",
+      "group": "friction",
+      "uncertainty": 0.04955625365332855,
+      "sq_error": 0.02096981128658864
+    },
+    {
+      "name": "friction_Right_Knee_Pitch",
+      "group": "friction",
+      "uncertainty": 0.049619109457412026,
+      "sq_error": 0.191695078360887
+    },
+    {
+      "name": "friction_Right_Ankle_Pitch",
+      "group": "friction",
+      "uncertainty": 0.0494578868073315,
+      "sq_error": 0.06053919119544049
+    },
+    {
+      "name": "friction_Right_Ankle_Roll",
+      "group": "friction",
+      "uncertainty": 0.04959474943950083,
+      "sq_error": 0.2900561612264025
+    },
+    {
+      "name": "mass_Trunk",
+      "group": "mass",
+      "uncertainty": 0.04947072588317611,
+      "sq_error": 0.03262965478944983
+    },
+    {
+      "name": "mass_H1",
+      "group": "mass",
+      "uncertainty": 0.05011632858628755,
+      "sq_error": 0.34013332502948984
+    },
+    {
+      "name": "mass_H2",
+      "group": "mass",
+      "uncertainty": 0.049463890221786766,
+      "sq_error": 0.024099224180180113
+    },
+    {
+      "name": "mass_AL1",
+      "group": "mass",
+      "uncertainty": 0.04947305144702938,
+      "sq_error": 0.02367519089722758
+    },
+    {
+      "name": "mass_AL2",
+      "group": "mass",
+      "uncertainty": 0.0497293977541722,
+      "sq_error": 0.3995597657218595
+    },
+    {
+      "name": "mass_AL3",
+      "group": "mass",
+      "uncertainty": 0.04921897114887047,
+      "sq_error": 0.10046804584327412
+    },
+    {
+      "name": "mass_left_hand_link",
+      "group": "mass",
+      "uncertainty": 0.04935545026688535,
+      "sq_error": 0.019755265839141223
+    },
+    {
+      "name": "mass_AR1",
+      "group": "mass",
+      "uncertainty": 0.04973447125326629,
+      "sq_error": 0.2297927971134702
+    },
+    {
+      "name": "mass_AR2",
+      "group": "mass",
+      "uncertainty": 0.04975861392698495,
+      "sq_error": 0.11188055506471593
+    },
+    {
+      "name": "mass_AR3",
+      "group": "mass",
+      "uncertainty": 0.04945928086493335,
+      "sq_error": 0.07756702846365486
+    },
+    {
+      "name": "mass_right_hand_link",
+      "group": "mass",
+      "uncertainty": 0.04963178077211762,
+      "sq_error": 0.025675182752815866
+    },
+    {
+      "name": "mass_Waist",
+      "group": "mass",
+      "uncertainty": 0.0494560746633264,
+      "sq_error": 0.22557362395892755
+    },
+    {
+      "name": "mass_Hip_Pitch_Left",
+      "group": "mass",
+      "uncertainty": 0.04950490090117036,
+      "sq_error": 0.11989496971949275
+    },
+    {
+      "name": "mass_Hip_Roll_Left",
+      "group": "mass",
+      "uncertainty": 0.04946160450189325,
+      "sq_error": 0.011479865261941707
+    },
+    {
+      "name": "mass_Hip_Yaw_Left",
+      "group": "mass",
+      "uncertainty": 0.04972641361107944,
+      "sq_error": 0.2468738412933891
+    },
+    {
+      "name": "mass_Shank_Left",
+      "group": "mass",
+      "uncertainty": 0.04960133328850511,
+      "sq_error": 0.09945900438792973
+    },
+    {
+      "name": "mass_Ankle_Cross_Left",
+      "group": "mass",
+      "uncertainty": 0.04930648645930733,
+      "sq_error": 0.02829170659515001
+    },
+    {
+      "name": "mass_left_foot_link",
+      "group": "mass",
+      "uncertainty": 0.04949669247601485,
+      "sq_error": 0.27063972219515525
+    },
+    {
+      "name": "mass_Hip_Pitch_Right",
+      "group": "mass",
+      "uncertainty": 0.04957596910598314,
+      "sq_error": 0.019644057063183267
+    },
+    {
+      "name": "mass_Hip_Roll_Right",
+      "group": "mass",
+      "uncertainty": 0.04944988801753438,
+      "sq_error": 0.004221271267655762
+    },
+    {
+      "name": "mass_Hip_Yaw_Right",
+      "group": "mass",
+      "uncertainty": 0.04991504556060294,
+      "sq_error": 0.2082617711528296
+    },
+    {
+      "name": "mass_Shank_Right",
+      "group": "mass",
+      "uncertainty": 0.04953751164379433,
+      "sq_error": 0.02889460465991231
+    },
+    {
+      "name": "mass_Ankle_Cross_Right",
+      "group": "mass",
+      "uncertainty": 0.05047752745623325,
+      "sq_error": 1.7228272989679128
+    },
+    {
+      "name": "mass_right_foot_link",
+      "group": "mass",
+      "uncertainty": 0.049734423105677654,
+      "sq_error": 0.0005226739308932071
+    },
+    {
+      "name": "gain_AAHead_yaw",
+      "group": "actuator",
+      "uncertainty": 0.049200977782326974,
+      "sq_error": 0.04997214454360084
+    },
+    {
+      "name": "gain_Head_pitch",
+      "group": "actuator",
+      "uncertainty": 0.049552969979954245,
+      "sq_error": 0.002483465604414691
+    },
+    {
+      "name": "gain_Left_Shoulder_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.04929698856736318,
+      "sq_error": 0.011580136744795716
+    },
+    {
+      "name": "gain_Left_Shoulder_Roll",
+      "group": "actuator",
+      "uncertainty": 0.04888486208883036,
+      "sq_error": 0.05144150802029381
+    },
+    {
+      "name": "gain_Left_Elbow_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.04918212451406372,
+      "sq_error": 0.06989868081092236
+    },
+    {
+      "name": "gain_Left_Elbow_Yaw",
+      "group": "actuator",
+      "uncertainty": 0.04931935907440196,
+      "sq_error": 0.006851255196976907
+    },
+    {
+      "name": "gain_Right_Shoulder_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.04951742290746216,
+      "sq_error": 0.023252792839373555
+    },
+    {
+      "name": "gain_Right_Shoulder_Roll",
+      "group": "actuator",
+      "uncertainty": 0.049162197599854886,
+      "sq_error": 0.0036892279215475247
+    },
+    {
+      "name": "gain_Right_Elbow_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.049079593576903544,
+      "sq_error": 0.018049060738147566
+    },
+    {
+      "name": "gain_Right_Elbow_Yaw",
+      "group": "actuator",
+      "uncertainty": 0.04937699924571054,
+      "sq_error": 0.0038492874275869856
+    },
+    {
+      "name": "gain_Waist",
+      "group": "actuator",
+      "uncertainty": 0.04917000152388991,
+      "sq_error": 0.01884625153660267
+    },
+    {
+      "name": "gain_Left_Hip_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.04944235066987951,
+      "sq_error": 0.010580473444461906
+    },
+    {
+      "name": "gain_Left_Hip_Roll",
+      "group": "actuator",
+      "uncertainty": 0.04873957016457039,
+      "sq_error": 0.014453316028129421
+    },
+    {
+      "name": "gain_Left_Hip_Yaw",
+      "group": "actuator",
+      "uncertainty": 0.0493750591350477,
+      "sq_error": 0.035700056495126954
+    },
+    {
+      "name": "gain_Left_Knee_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.049384098077009525,
+      "sq_error": 0.0625878998002112
+    },
+    {
+      "name": "gain_Left_Ankle_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.0494665152157651,
+      "sq_error": 0.0037718640777604845
+    },
+    {
+      "name": "gain_Left_Ankle_Roll",
+      "group": "actuator",
+      "uncertainty": 0.049428321516349245,
+      "sq_error": 0.003041537007563789
+    },
+    {
+      "name": "gain_Right_Hip_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.04904782038749894,
+      "sq_error": 0.014342109272842744
+    },
+    {
+      "name": "gain_Right_Hip_Roll",
+      "group": "actuator",
+      "uncertainty": 0.0490825007734222,
+      "sq_error": 0.05357807295363808
+    },
+    {
+      "name": "gain_Right_Hip_Yaw",
+      "group": "actuator",
+      "uncertainty": 0.04926657430639579,
+      "sq_error": 0.012686197109743756
+    },
+    {
+      "name": "gain_Right_Knee_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.049373753583981037,
+      "sq_error": 0.021144328537999888
+    },
+    {
+      "name": "gain_Right_Ankle_Pitch",
+      "group": "actuator",
+      "uncertainty": 0.04896420797568951,
+      "sq_error": 0.0014528098543694023
+    },
+    {
+      "name": "gain_Right_Ankle_Roll",
+      "group": "actuator",
+      "uncertainty": 0.048971785784783686,
+      "sq_error": 2.0192609904316794e-06
+    }
+  ],
+  "pearson_correlation": 0.625704202208027,
+  "spearman_correlation": 0.4493570116350275
+}

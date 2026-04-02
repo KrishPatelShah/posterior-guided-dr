@@ -1,0 +1,752 @@
+{
+  "sensitivity_scores": {
+    "friction_AAHead_yaw": 0.011542772874236107,
+    "friction_Head_pitch": 0.009240176528692245,
+    "friction_Left_Shoulder_Pitch": 0.01137169823050499,
+    "friction_Left_Shoulder_Roll": 0.01538541354238987,
+    "friction_Left_Elbow_Pitch": 0.008601873181760311,
+    "friction_Left_Elbow_Yaw": 0.014554543420672417,
+    "friction_Right_Shoulder_Pitch": 0.011602049693465233,
+    "friction_Right_Shoulder_Roll": 0.011264480650424957,
+    "friction_Right_Elbow_Pitch": 0.011799435131251812,
+    "friction_Right_Elbow_Yaw": 0.015469992533326149,
+    "friction_Waist": 0.015839291736483574,
+    "friction_Left_Hip_Pitch": 0.009467968717217445,
+    "friction_Left_Hip_Roll": 0.018703008070588112,
+    "friction_Left_Hip_Yaw": 0.01055088359862566,
+    "friction_Left_Knee_Pitch": 0.012814474292099476,
+    "friction_Left_Ankle_Pitch": 0.006864519324153662,
+    "friction_Left_Ankle_Roll": 0.011761625297367573,
+    "friction_Right_Hip_Pitch": 0.0113481804728508,
+    "friction_Right_Hip_Roll": 0.006231682375073433,
+    "friction_Right_Hip_Yaw": 0.014504773542284966,
+    "friction_Right_Knee_Pitch": 0.012597035616636276,
+    "friction_Right_Ankle_Pitch": 0.011517655104398727,
+    "friction_Right_Ankle_Roll": 0.016424812376499176,
+    "mass_Trunk": 0.013954252004623413,
+    "mass_H1": 0.012267934158444405,
+    "mass_H2": 0.014010651968419552,
+    "mass_AL1": 0.01198381558060646,
+    "mass_AL2": 0.01189331989735365,
+    "mass_AL3": 0.014081592671573162,
+    "mass_left_hand_link": 0.015797704458236694,
+    "mass_AR1": 0.010586895048618317,
+    "mass_AR2": 0.012813321314752102,
+    "mass_AR3": 0.007400515489280224,
+    "mass_right_hand_link": 0.0165338646620512,
+    "mass_Waist": 0.0057899197563529015,
+    "mass_Hip_Pitch_Left": 0.015174663625657558,
+    "mass_Hip_Roll_Left": 0.011510039679706097,
+    "mass_Hip_Yaw_Left": 0.01129301730543375,
+    "mass_Shank_Left": 0.010042564943432808,
+    "mass_Ankle_Cross_Left": 0.009778903797268867,
+    "mass_left_foot_link": 0.009646650403738022,
+    "mass_Hip_Pitch_Right": 0.012928754091262817,
+    "mass_Hip_Roll_Right": 0.01107398234307766,
+    "mass_Hip_Yaw_Right": 0.012720642611384392,
+    "mass_Shank_Right": 0.00610395148396492,
+    "mass_Ankle_Cross_Right": 0.015388745814561844,
+    "mass_right_foot_link": 0.015172094106674194,
+    "gain_AAHead_yaw": 0.010182127356529236,
+    "gain_Head_pitch": 0.01158972829580307,
+    "gain_Left_Shoulder_Pitch": 0.0146144088357687,
+    "gain_Left_Shoulder_Roll": 0.012041298672556877,
+    "gain_Left_Elbow_Pitch": 0.01154761016368866,
+    "gain_Left_Elbow_Yaw": 0.01226877048611641,
+    "gain_Right_Shoulder_Pitch": 0.01280437782406807,
+    "gain_Right_Shoulder_Roll": 0.013214279897511005,
+    "gain_Right_Elbow_Pitch": 0.013715344481170177,
+    "gain_Right_Elbow_Yaw": 0.01072622463107109,
+    "gain_Waist": 0.012419257313013077,
+    "gain_Left_Hip_Pitch": 0.010324888862669468,
+    "gain_Left_Hip_Roll": 0.017488030716776848,
+    "gain_Left_Hip_Yaw": 0.01500772312283516,
+    "gain_Left_Knee_Pitch": 0.014361046254634857,
+    "gain_Left_Ankle_Pitch": 0.009244166314601898,
+    "gain_Left_Ankle_Roll": 0.008866087533533573,
+    "gain_Right_Hip_Pitch": 0.014572445303201675,
+    "gain_Right_Hip_Roll": 0.01712566614151001,
+    "gain_Right_Hip_Yaw": 0.015866883099079132,
+    "gain_Right_Knee_Pitch": 0.01580856367945671,
+    "gain_Right_Ankle_Pitch": 0.012662633322179317,
+    "gain_Right_Ankle_Roll": 0.012940967455506325,
+    "contact_friction": 0.008683989755809307,
+    "contact_stiffness": 0.013520262204110622,
+    "contact_damping": 0.013401919975876808,
+    "contact_solimp_width": 0.01168825849890709
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "param_index": 12,
+      "param_name": "friction_Left_Hip_Roll",
+      "group": "friction",
+      "score": 0.018703008070588112
+    },
+    {
+      "rank": 2,
+      "param_index": 59,
+      "param_name": "gain_Left_Hip_Roll",
+      "group": "actuator",
+      "score": 0.017488030716776848
+    },
+    {
+      "rank": 3,
+      "param_index": 65,
+      "param_name": "gain_Right_Hip_Roll",
+      "group": "actuator",
+      "score": 0.01712566614151001
+    },
+    {
+      "rank": 4,
+      "param_index": 33,
+      "param_name": "mass_right_hand_link",
+      "group": "mass",
+      "score": 0.0165338646620512
+    },
+    {
+      "rank": 5,
+      "param_index": 22,
+      "param_name": "friction_Right_Ankle_Roll",
+      "group": "friction",
+      "score": 0.016424812376499176
+    },
+    {
+      "rank": 6,
+      "param_index": 66,
+      "param_name": "gain_Right_Hip_Yaw",
+      "group": "actuator",
+      "score": 0.015866883099079132
+    },
+    {
+      "rank": 7,
+      "param_index": 10,
+      "param_name": "friction_Waist",
+      "group": "friction",
+      "score": 0.015839291736483574
+    },
+    {
+      "rank": 8,
+      "param_index": 67,
+      "param_name": "gain_Right_Knee_Pitch",
+      "group": "actuator",
+      "score": 0.01580856367945671
+    },
+    {
+      "rank": 9,
+      "param_index": 29,
+      "param_name": "mass_left_hand_link",
+      "group": "mass",
+      "score": 0.015797704458236694
+    },
+    {
+      "rank": 10,
+      "param_index": 9,
+      "param_name": "friction_Right_Elbow_Yaw",
+      "group": "friction",
+      "score": 0.015469992533326149
+    },
+    {
+      "rank": 11,
+      "param_index": 45,
+      "param_name": "mass_Ankle_Cross_Right",
+      "group": "mass",
+      "score": 0.015388745814561844
+    },
+    {
+      "rank": 12,
+      "param_index": 3,
+      "param_name": "friction_Left_Shoulder_Roll",
+      "group": "friction",
+      "score": 0.01538541354238987
+    },
+    {
+      "rank": 13,
+      "param_index": 35,
+      "param_name": "mass_Hip_Pitch_Left",
+      "group": "mass",
+      "score": 0.015174663625657558
+    },
+    {
+      "rank": 14,
+      "param_index": 46,
+      "param_name": "mass_right_foot_link",
+      "group": "mass",
+      "score": 0.015172094106674194
+    },
+    {
+      "rank": 15,
+      "param_index": 60,
+      "param_name": "gain_Left_Hip_Yaw",
+      "group": "actuator",
+      "score": 0.01500772312283516
+    },
+    {
+      "rank": 16,
+      "param_index": 49,
+      "param_name": "gain_Left_Shoulder_Pitch",
+      "group": "actuator",
+      "score": 0.0146144088357687
+    },
+    {
+      "rank": 17,
+      "param_index": 64,
+      "param_name": "gain_Right_Hip_Pitch",
+      "group": "actuator",
+      "score": 0.014572445303201675
+    },
+    {
+      "rank": 18,
+      "param_index": 5,
+      "param_name": "friction_Left_Elbow_Yaw",
+      "group": "friction",
+      "score": 0.014554543420672417
+    },
+    {
+      "rank": 19,
+      "param_index": 19,
+      "param_name": "friction_Right_Hip_Yaw",
+      "group": "friction",
+      "score": 0.014504773542284966
+    },
+    {
+      "rank": 20,
+      "param_index": 61,
+      "param_name": "gain_Left_Knee_Pitch",
+      "group": "actuator",
+      "score": 0.014361046254634857
+    },
+    {
+      "rank": 21,
+      "param_index": 28,
+      "param_name": "mass_AL3",
+      "group": "mass",
+      "score": 0.014081592671573162
+    },
+    {
+      "rank": 22,
+      "param_index": 25,
+      "param_name": "mass_H2",
+      "group": "mass",
+      "score": 0.014010651968419552
+    },
+    {
+      "rank": 23,
+      "param_index": 23,
+      "param_name": "mass_Trunk",
+      "group": "mass",
+      "score": 0.013954252004623413
+    },
+    {
+      "rank": 24,
+      "param_index": 55,
+      "param_name": "gain_Right_Elbow_Pitch",
+      "group": "actuator",
+      "score": 0.013715344481170177
+    },
+    {
+      "rank": 25,
+      "param_index": 71,
+      "param_name": "contact_stiffness",
+      "group": "contact",
+      "score": 0.013520262204110622
+    },
+    {
+      "rank": 26,
+      "param_index": 72,
+      "param_name": "contact_damping",
+      "group": "contact",
+      "score": 0.013401919975876808
+    },
+    {
+      "rank": 27,
+      "param_index": 54,
+      "param_name": "gain_Right_Shoulder_Roll",
+      "group": "actuator",
+      "score": 0.013214279897511005
+    },
+    {
+      "rank": 28,
+      "param_index": 69,
+      "param_name": "gain_Right_Ankle_Roll",
+      "group": "actuator",
+      "score": 0.012940967455506325
+    },
+    {
+      "rank": 29,
+      "param_index": 41,
+      "param_name": "mass_Hip_Pitch_Right",
+      "group": "mass",
+      "score": 0.012928754091262817
+    },
+    {
+      "rank": 30,
+      "param_index": 14,
+      "param_name": "friction_Left_Knee_Pitch",
+      "group": "friction",
+      "score": 0.012814474292099476
+    },
+    {
+      "rank": 31,
+      "param_index": 31,
+      "param_name": "mass_AR2",
+      "group": "mass",
+      "score": 0.012813321314752102
+    },
+    {
+      "rank": 32,
+      "param_index": 53,
+      "param_name": "gain_Right_Shoulder_Pitch",
+      "group": "actuator",
+      "score": 0.01280437782406807
+    },
+    {
+      "rank": 33,
+      "param_index": 43,
+      "param_name": "mass_Hip_Yaw_Right",
+      "group": "mass",
+      "score": 0.012720642611384392
+    },
+    {
+      "rank": 34,
+      "param_index": 68,
+      "param_name": "gain_Right_Ankle_Pitch",
+      "group": "actuator",
+      "score": 0.012662633322179317
+    },
+    {
+      "rank": 35,
+      "param_index": 20,
+      "param_name": "friction_Right_Knee_Pitch",
+      "group": "friction",
+      "score": 0.012597035616636276
+    },
+    {
+      "rank": 36,
+      "param_index": 57,
+      "param_name": "gain_Waist",
+      "group": "actuator",
+      "score": 0.012419257313013077
+    },
+    {
+      "rank": 37,
+      "param_index": 52,
+      "param_name": "gain_Left_Elbow_Yaw",
+      "group": "actuator",
+      "score": 0.01226877048611641
+    },
+    {
+      "rank": 38,
+      "param_index": 24,
+      "param_name": "mass_H1",
+      "group": "mass",
+      "score": 0.012267934158444405
+    },
+    {
+      "rank": 39,
+      "param_index": 50,
+      "param_name": "gain_Left_Shoulder_Roll",
+      "group": "actuator",
+      "score": 0.012041298672556877
+    },
+    {
+      "rank": 40,
+      "param_index": 26,
+      "param_name": "mass_AL1",
+      "group": "mass",
+      "score": 0.01198381558060646
+    },
+    {
+      "rank": 41,
+      "param_index": 27,
+      "param_name": "mass_AL2",
+      "group": "mass",
+      "score": 0.01189331989735365
+    },
+    {
+      "rank": 42,
+      "param_index": 8,
+      "param_name": "friction_Right_Elbow_Pitch",
+      "group": "friction",
+      "score": 0.011799435131251812
+    },
+    {
+      "rank": 43,
+      "param_index": 16,
+      "param_name": "friction_Left_Ankle_Roll",
+      "group": "friction",
+      "score": 0.011761625297367573
+    },
+    {
+      "rank": 44,
+      "param_index": 73,
+      "param_name": "contact_solimp_width",
+      "group": "contact",
+      "score": 0.01168825849890709
+    },
+    {
+      "rank": 45,
+      "param_index": 6,
+      "param_name": "friction_Right_Shoulder_Pitch",
+      "group": "friction",
+      "score": 0.011602049693465233
+    },
+    {
+      "rank": 46,
+      "param_index": 48,
+      "param_name": "gain_Head_pitch",
+      "group": "actuator",
+      "score": 0.01158972829580307
+    },
+    {
+      "rank": 47,
+      "param_index": 51,
+      "param_name": "gain_Left_Elbow_Pitch",
+      "group": "actuator",
+      "score": 0.01154761016368866
+    },
+    {
+      "rank": 48,
+      "param_index": 0,
+      "param_name": "friction_AAHead_yaw",
+      "group": "friction",
+      "score": 0.011542772874236107
+    },
+    {
+      "rank": 49,
+      "param_index": 21,
+      "param_name": "friction_Right_Ankle_Pitch",
+      "group": "friction",
+      "score": 0.011517655104398727
+    },
+    {
+      "rank": 50,
+      "param_index": 36,
+      "param_name": "mass_Hip_Roll_Left",
+      "group": "mass",
+      "score": 0.011510039679706097
+    },
+    {
+      "rank": 51,
+      "param_index": 2,
+      "param_name": "friction_Left_Shoulder_Pitch",
+      "group": "friction",
+      "score": 0.01137169823050499
+    },
+    {
+      "rank": 52,
+      "param_index": 17,
+      "param_name": "friction_Right_Hip_Pitch",
+      "group": "friction",
+      "score": 0.0113481804728508
+    },
+    {
+      "rank": 53,
+      "param_index": 37,
+      "param_name": "mass_Hip_Yaw_Left",
+      "group": "mass",
+      "score": 0.01129301730543375
+    },
+    {
+      "rank": 54,
+      "param_index": 7,
+      "param_name": "friction_Right_Shoulder_Roll",
+      "group": "friction",
+      "score": 0.011264480650424957
+    },
+    {
+      "rank": 55,
+      "param_index": 42,
+      "param_name": "mass_Hip_Roll_Right",
+      "group": "mass",
+      "score": 0.01107398234307766
+    },
+    {
+      "rank": 56,
+      "param_index": 56,
+      "param_name": "gain_Right_Elbow_Yaw",
+      "group": "actuator",
+      "score": 0.01072622463107109
+    },
+    {
+      "rank": 57,
+      "param_index": 30,
+      "param_name": "mass_AR1",
+      "group": "mass",
+      "score": 0.010586895048618317
+    },
+    {
+      "rank": 58,
+      "param_index": 13,
+      "param_name": "friction_Left_Hip_Yaw",
+      "group": "friction",
+      "score": 0.01055088359862566
+    },
+    {
+      "rank": 59,
+      "param_index": 58,
+      "param_name": "gain_Left_Hip_Pitch",
+      "group": "actuator",
+      "score": 0.010324888862669468
+    },
+    {
+      "rank": 60,
+      "param_index": 47,
+      "param_name": "gain_AAHead_yaw",
+      "group": "actuator",
+      "score": 0.010182127356529236
+    },
+    {
+      "rank": 61,
+      "param_index": 38,
+      "param_name": "mass_Shank_Left",
+      "group": "mass",
+      "score": 0.010042564943432808
+    },
+    {
+      "rank": 62,
+      "param_index": 39,
+      "param_name": "mass_Ankle_Cross_Left",
+      "group": "mass",
+      "score": 0.009778903797268867
+    },
+    {
+      "rank": 63,
+      "param_index": 40,
+      "param_name": "mass_left_foot_link",
+      "group": "mass",
+      "score": 0.009646650403738022
+    },
+    {
+      "rank": 64,
+      "param_index": 11,
+      "param_name": "friction_Left_Hip_Pitch",
+      "group": "friction",
+      "score": 0.009467968717217445
+    },
+    {
+      "rank": 65,
+      "param_index": 62,
+      "param_name": "gain_Left_Ankle_Pitch",
+      "group": "actuator",
+      "score": 0.009244166314601898
+    },
+    {
+      "rank": 66,
+      "param_index": 1,
+      "param_name": "friction_Head_pitch",
+      "group": "friction",
+      "score": 0.009240176528692245
+    },
+    {
+      "rank": 67,
+      "param_index": 63,
+      "param_name": "gain_Left_Ankle_Roll",
+      "group": "actuator",
+      "score": 0.008866087533533573
+    },
+    {
+      "rank": 68,
+      "param_index": 70,
+      "param_name": "contact_friction",
+      "group": "contact",
+      "score": 0.008683989755809307
+    },
+    {
+      "rank": 69,
+      "param_index": 4,
+      "param_name": "friction_Left_Elbow_Pitch",
+      "group": "friction",
+      "score": 0.008601873181760311
+    },
+    {
+      "rank": 70,
+      "param_index": 32,
+      "param_name": "mass_AR3",
+      "group": "mass",
+      "score": 0.007400515489280224
+    },
+    {
+      "rank": 71,
+      "param_index": 15,
+      "param_name": "friction_Left_Ankle_Pitch",
+      "group": "friction",
+      "score": 0.006864519324153662
+    },
+    {
+      "rank": 72,
+      "param_index": 18,
+      "param_name": "friction_Right_Hip_Roll",
+      "group": "friction",
+      "score": 0.006231682375073433
+    },
+    {
+      "rank": 73,
+      "param_index": 44,
+      "param_name": "mass_Shank_Right",
+      "group": "mass",
+      "score": 0.00610395148396492
+    },
+    {
+      "rank": 74,
+      "param_index": 34,
+      "param_name": "mass_Waist",
+      "group": "mass",
+      "score": 0.0057899197563529015
+    }
+  ],
+  "perturbation": 0.2,
+  "total_params": 74,
+  "positive_divergences": {
+    "friction_AAHead_yaw": 0.009235430508852005,
+    "friction_Head_pitch": 0.009240176528692245,
+    "friction_Left_Shoulder_Pitch": 0.010860342532396317,
+    "friction_Left_Shoulder_Roll": 0.004996646661311388,
+    "friction_Left_Elbow_Pitch": 0.0077779171988368034,
+    "friction_Left_Elbow_Yaw": 0.014554543420672417,
+    "friction_Right_Shoulder_Pitch": 0.011602049693465233,
+    "friction_Right_Shoulder_Roll": 0.011264480650424957,
+    "friction_Right_Elbow_Pitch": 0.011799435131251812,
+    "friction_Right_Elbow_Yaw": 0.015469992533326149,
+    "friction_Waist": 0.015839291736483574,
+    "friction_Left_Hip_Pitch": 0.009467968717217445,
+    "friction_Left_Hip_Roll": 0.018703008070588112,
+    "friction_Left_Hip_Yaw": 0.0042927018366754055,
+    "friction_Left_Knee_Pitch": 0.012292340397834778,
+    "friction_Left_Ankle_Pitch": 0.006864519324153662,
+    "friction_Left_Ankle_Roll": 0.011761625297367573,
+    "friction_Right_Hip_Pitch": 0.0113481804728508,
+    "friction_Right_Hip_Roll": 0.006231682375073433,
+    "friction_Right_Hip_Yaw": 0.011302762664854527,
+    "friction_Right_Knee_Pitch": 0.0072318133898079395,
+    "friction_Right_Ankle_Pitch": 0.011517655104398727,
+    "friction_Right_Ankle_Roll": 0.016424812376499176,
+    "mass_Trunk": 0.011096598580479622,
+    "mass_H1": 0.012267934158444405,
+    "mass_H2": 0.014010651968419552,
+    "mass_AL1": 0.01198381558060646,
+    "mass_AL2": 0.007355513051152229,
+    "mass_AL3": 0.002820169785991311,
+    "mass_left_hand_link": 0.007254868745803833,
+    "mass_AR1": 0.010586895048618317,
+    "mass_AR2": 0.012813321314752102,
+    "mass_AR3": 0.007400515489280224,
+    "mass_right_hand_link": 0.0165338646620512,
+    "mass_Waist": 0.0057899197563529015,
+    "mass_Hip_Pitch_Left": 0.015174663625657558,
+    "mass_Hip_Roll_Left": 0.011510039679706097,
+    "mass_Hip_Yaw_Left": 0.01129301730543375,
+    "mass_Shank_Left": 0.009464305825531483,
+    "mass_Ankle_Cross_Left": 0.009778903797268867,
+    "mass_left_foot_link": 0.009646650403738022,
+    "mass_Hip_Pitch_Right": 0.005783276632428169,
+    "mass_Hip_Roll_Right": 0.01107398234307766,
+    "mass_Hip_Yaw_Right": 0.012116894125938416,
+    "mass_Shank_Right": 0.00610395148396492,
+    "mass_Ankle_Cross_Right": 0.0037358207628130913,
+    "mass_right_foot_link": 0.011526266112923622,
+    "gain_AAHead_yaw": 0.010182127356529236,
+    "gain_Head_pitch": 0.007002584170550108,
+    "gain_Left_Shoulder_Pitch": 0.0146144088357687,
+    "gain_Left_Shoulder_Roll": 0.012041298672556877,
+    "gain_Left_Elbow_Pitch": 0.01154761016368866,
+    "gain_Left_Elbow_Yaw": 0.010469193570315838,
+    "gain_Right_Shoulder_Pitch": 0.010384045541286469,
+    "gain_Right_Shoulder_Roll": 0.005049777217209339,
+    "gain_Right_Elbow_Pitch": 0.013715344481170177,
+    "gain_Right_Elbow_Yaw": 0.007385320961475372,
+    "gain_Waist": 0.012419257313013077,
+    "gain_Left_Hip_Pitch": 0.010324888862669468,
+    "gain_Left_Hip_Roll": 0.017488030716776848,
+    "gain_Left_Hip_Yaw": 0.01500772312283516,
+    "gain_Left_Knee_Pitch": 0.014361046254634857,
+    "gain_Left_Ankle_Pitch": 0.0041724918410182,
+    "gain_Left_Ankle_Roll": 0.008866087533533573,
+    "gain_Right_Hip_Pitch": 0.014572445303201675,
+    "gain_Right_Hip_Roll": 0.012950620613992214,
+    "gain_Right_Hip_Yaw": 0.015866883099079132,
+    "gain_Right_Knee_Pitch": 0.01580856367945671,
+    "gain_Right_Ankle_Pitch": 0.012662633322179317,
+    "gain_Right_Ankle_Roll": 0.011661633849143982,
+    "contact_friction": 0.007569527253508568,
+    "contact_stiffness": 0.011612702161073685,
+    "contact_damping": 0.009233021177351475,
+    "contact_solimp_width": 0.01168825849890709
+  },
+  "negative_divergences": {
+    "friction_AAHead_yaw": 0.011542772874236107,
+    "friction_Head_pitch": 0.005692955572158098,
+    "friction_Left_Shoulder_Pitch": 0.01137169823050499,
+    "friction_Left_Shoulder_Roll": 0.01538541354238987,
+    "friction_Left_Elbow_Pitch": 0.008601873181760311,
+    "friction_Left_Elbow_Yaw": 0.0135772954672575,
+    "friction_Right_Shoulder_Pitch": 0.008783701807260513,
+    "friction_Right_Shoulder_Roll": 0.00997459702193737,
+    "friction_Right_Elbow_Pitch": 0.006189228966832161,
+    "friction_Right_Elbow_Yaw": 0.00310605950653553,
+    "friction_Waist": 0.005630820989608765,
+    "friction_Left_Hip_Pitch": 0.004342332482337952,
+    "friction_Left_Hip_Roll": 0.011813539080321789,
+    "friction_Left_Hip_Yaw": 0.01055088359862566,
+    "friction_Left_Knee_Pitch": 0.012814474292099476,
+    "friction_Left_Ankle_Pitch": 0.005467684473842382,
+    "friction_Left_Ankle_Roll": 0.0054146600887179375,
+    "friction_Right_Hip_Pitch": 0.010322161950170994,
+    "friction_Right_Hip_Roll": 0.005278569180518389,
+    "friction_Right_Hip_Yaw": 0.014504773542284966,
+    "friction_Right_Knee_Pitch": 0.012597035616636276,
+    "friction_Right_Ankle_Pitch": 0.007664196193218231,
+    "friction_Right_Ankle_Roll": 0.003594558220356703,
+    "mass_Trunk": 0.013954252004623413,
+    "mass_H1": 0.010173380374908447,
+    "mass_H2": 0.011481895111501217,
+    "mass_AL1": 0.010037343949079514,
+    "mass_AL2": 0.01189331989735365,
+    "mass_AL3": 0.014081592671573162,
+    "mass_left_hand_link": 0.015797704458236694,
+    "mass_AR1": 0.009948398917913437,
+    "mass_AR2": 0.011572390794754028,
+    "mass_AR3": 0.0047067273408174515,
+    "mass_right_hand_link": 0.009989427402615547,
+    "mass_Waist": 0.004588826559484005,
+    "mass_Hip_Pitch_Left": 0.010779517702758312,
+    "mass_Hip_Roll_Left": 0.002747523132711649,
+    "mass_Hip_Yaw_Left": 0.009934915229678154,
+    "mass_Shank_Left": 0.010042564943432808,
+    "mass_Ankle_Cross_Left": 0.004655445460230112,
+    "mass_left_foot_link": 0.006911175791174173,
+    "mass_Hip_Pitch_Right": 0.012928754091262817,
+    "mass_Hip_Roll_Right": 0.010426928289234638,
+    "mass_Hip_Yaw_Right": 0.012720642611384392,
+    "mass_Shank_Right": 0.004675464704632759,
+    "mass_Ankle_Cross_Right": 0.015388745814561844,
+    "mass_right_foot_link": 0.015172094106674194,
+    "gain_AAHead_yaw": 0.007478700950741768,
+    "gain_Head_pitch": 0.01158972829580307,
+    "gain_Left_Shoulder_Pitch": 0.0028640609234571457,
+    "gain_Left_Shoulder_Roll": 0.0025993750896304846,
+    "gain_Left_Elbow_Pitch": 0.0071972631849348545,
+    "gain_Left_Elbow_Yaw": 0.01226877048611641,
+    "gain_Right_Shoulder_Pitch": 0.01280437782406807,
+    "gain_Right_Shoulder_Roll": 0.013214279897511005,
+    "gain_Right_Elbow_Pitch": 0.006627190392464399,
+    "gain_Right_Elbow_Yaw": 0.01072622463107109,
+    "gain_Waist": 0.011138351634144783,
+    "gain_Left_Hip_Pitch": 0.006889249663800001,
+    "gain_Left_Hip_Roll": 0.010364117100834846,
+    "gain_Left_Hip_Yaw": 0.008928709663450718,
+    "gain_Left_Knee_Pitch": 0.013984160497784615,
+    "gain_Left_Ankle_Pitch": 0.009244166314601898,
+    "gain_Left_Ankle_Roll": 0.005094652995467186,
+    "gain_Right_Hip_Pitch": 0.00853051245212555,
+    "gain_Right_Hip_Roll": 0.01712566614151001,
+    "gain_Right_Hip_Yaw": 0.008750501088798046,
+    "gain_Right_Knee_Pitch": 0.010870187543332577,
+    "gain_Right_Ankle_Pitch": 0.005651475861668587,
+    "gain_Right_Ankle_Roll": 0.012940967455506325,
+    "contact_friction": 0.008683989755809307,
+    "contact_stiffness": 0.013520262204110622,
+    "contact_damping": 0.013401919975876808,
+    "contact_solimp_width": 0.009923211298882961
+  }
+}

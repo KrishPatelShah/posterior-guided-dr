@@ -42,7 +42,6 @@ logs
 logs_eval
 runs
 outputs
-results/
 hydra_logs/
 wandb/
 roboverse/data/
