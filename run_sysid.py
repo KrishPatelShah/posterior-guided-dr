@@ -31,28 +31,42 @@ Typical workflow:
 
 import argparse
 import json
+import os
+import platform
 import sys
 from pathlib import Path
 
+if platform.system() == "Darwin":
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+
 import jax
 import jax.numpy as jnp
-import mujoco
 import numpy as np
+import yaml
+
+from pgdr.model_utils import load_mj_model, resolve_model_xml
 
 
 def cmd_sensitivity(args):
     from pgdr.param_space import build_t1_param_space
     from pgdr.sensitivity import run_sensitivity_analysis, reduce_param_space
+    from pgdr.sysid import _generate_action_sequence
 
-    mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
+    mj_model = load_mj_model(args.model_xml)
     ps = build_t1_param_space(mj_model)
 
     print(f"Running one-at-a-time sensitivity analysis (d={ps.d})...")
+    commands = [
+        {"vx": 1.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
+        {"vx": 0.0, "vy": 0.0, "wz": 0.5, "duration": 2.0},
+    ]
+    actions = _generate_action_sequence(mj_model, commands, control_dt=0.02)
     scores = run_sensitivity_analysis(
         mj_model=mj_model,
         param_space=ps,
-        perturbation_scale=args.perturb,
-        horizon_steps=args.horizon,
+        actions=actions[:args.horizon],
+        perturbation=args.perturb,
     )
 
     out = Path(args.output)
@@ -60,13 +74,17 @@ def cmd_sensitivity(args):
     out.write_text(json.dumps(scores, indent=2))
     print(f"Sensitivity scores saved to {out}")
 
-    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    ranked = sorted(
+        scores["sensitivity_scores"].items(),
+        key=lambda kv: kv[1],
+        reverse=True,
+    )
     print("\nTop 10 most sensitive parameters:")
     for name, score in ranked[:10]:
         print(f"  {name:35s}  {score:.4f}")
 
     if args.top_k:
-        reduced_ps = reduce_param_space(ps, scores, top_k=args.top_k)
+        reduced_ps, _ = reduce_param_space(ps, scores, keep_top_k=args.top_k)
         reduced_path = out.with_suffix(".reduced_space.json")
         reduced_ps.save(str(reduced_path))
         print(f"\nReduced param space (top {args.top_k}) saved to {reduced_path}")
@@ -76,7 +94,7 @@ def cmd_create_sim_a(args):
     from pgdr.param_space import build_t1_param_space, ParamSpace
     from pgdr.sysid import create_sim_a
 
-    mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
+    mj_model = load_mj_model(args.model_xml)
     ps = (ParamSpace.load(args.param_space)
           if args.param_space else build_t1_param_space(mj_model))
 
@@ -99,13 +117,13 @@ def cmd_create_sim_a(args):
 def cmd_collect_reference(args):
     from pgdr.param_space import build_t1_param_space, ParamSpace
     from pgdr.sysid import collect_reference_trajectory, SysIdConfig, _generate_action_sequence
-    from pgdr.param_space import _find_foot_geoms
 
-    mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
+    mj_model = load_mj_model(args.model_xml)
     ps = (ParamSpace.load(args.param_space)
           if args.param_space else build_t1_param_space(mj_model))
 
-    cfg = SysIdConfig.from_yaml(args.config) if args.config else SysIdConfig()
+    cfg_path = args.config
+    _ = SysIdConfig.from_yaml(cfg_path) if cfg_path else SysIdConfig()
 
     # Load or zero-init parameters
     if args.sim_a_params:
@@ -116,17 +134,20 @@ def cmd_collect_reference(args):
         print("Using default parameters (real-robot mode — inject real data manually)")
 
     # Generate scripted action sequence from velocity commands
-    commands_cfg = cfg.__class__.__dataclass_fields__  # fallback
-    commands = [
+    raw_cfg = {}
+    if cfg_path:
+        with open(cfg_path) as f:
+            raw_cfg = yaml.safe_load(f) or {}
+
+    commands = raw_cfg.get("reference", {}).get("commands", [
         {"vx": 1.0, "vy": 0.0, "wz": 0.0, "duration": 5.0},
         {"vx": 0.0, "vy": 0.0, "wz": 0.5, "duration": 3.0},
         {"vx": -0.5, "vy": 0.0, "wz": 0.0, "duration": 3.0},
         {"vx": 0.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
-    ]
-    actions = _generate_action_sequence(mj_model, commands, control_dt=0.02)
+    ])
+    control_dt = raw_cfg.get("reference", {}).get("control_dt", 0.02)
+    actions = _generate_action_sequence(mj_model, commands, control_dt=control_dt)
     print(f"Generated action sequence: T={actions.shape[0]}, nu={actions.shape[1]}")
-
-    foot_geom_ids = _find_foot_geoms(mj_model)
 
     print("Rolling out reference trajectory...")
     ref = collect_reference_trajectory(
@@ -135,7 +156,6 @@ def cmd_collect_reference(args):
         p_normalized=p_norm,
         actions=actions,
         n_substeps=10,
-        foot_geom_ids=foot_geom_ids,
     )
 
     out = Path(args.output)
@@ -149,7 +169,7 @@ def cmd_identify(args):
     from pgdr.param_space import build_t1_param_space, ParamSpace
     from pgdr.sysid import SysIdConfig, ReferenceTrajectory, run_identification
 
-    mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
+    mj_model = load_mj_model(args.model_xml)
     ps = (ParamSpace.load(args.param_space)
           if args.param_space else build_t1_param_space(mj_model))
     print(f"Parameter space: d={ps.d}")
@@ -174,8 +194,8 @@ def cmd_identify(args):
     ps.save(str(out_dir / "param_space.json"))
 
     summary = {
-        "best_loss": float(info.get("best_loss", float("nan"))),
-        "num_generations": int(info.get("num_generations", 0)),
+        "final_loss": float(info.get("final_loss", float("nan"))),
+        "num_generations_run": int(info.get("num_generations_run", 0)),
         "sigma_trace": float(jnp.trace(Sigma)),
         "sigma_condition_number": float(
             jnp.max(jnp.linalg.eigvalsh(Sigma)) /
@@ -183,10 +203,11 @@ def cmd_identify(args):
         ),
     }
     (out_dir / "identification_summary.json").write_text(json.dumps(summary, indent=2))
+    (out_dir / "sysid_info.json").write_text(json.dumps(info, indent=2, default=float))
 
     print(f"\nIdentification complete.")
-    print(f"  Best loss:   {summary['best_loss']:.6f}")
-    print(f"  Generations: {summary['num_generations']}")
+    print(f"  Final loss:  {summary['final_loss']:.6f}")
+    print(f"  Generations: {summary['num_generations_run']}")
     print(f"  Σ trace:     {summary['sigma_trace']:.4f}")
     print(f"  Results →    {out_dir}")
 
@@ -200,7 +221,7 @@ def cmd_verify(args):
         print("ERROR: p_true.npy not found. Run create-sim-a first.")
         sys.exit(1)
 
-    mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
+    mj_model = load_mj_model(args.model_xml)
     ps = (ParamSpace.load(str(rd / "param_space.json"))
           if (rd / "param_space.json").exists()
           else build_t1_param_space(mj_model))
@@ -209,14 +230,20 @@ def cmd_verify(args):
     Sigma = jnp.array(np.load(rd / "Sigma.npy"))
     p_true = jnp.array(np.load(rd / "p_true.npy"))
 
+    if p_star.shape[0] != p_true.shape[0]:
+        raise ValueError(
+            f"Shape mismatch: p_star has d={p_star.shape[0]} but p_true has d={p_true.shape[0]}. "
+            "Make sure the run directory contains the matching param_space.json and p_true.npy."
+        )
+
     recovery = compute_param_recovery(p_star, p_true, ps)
     calibration = compute_covariance_calibration(p_star, p_true, Sigma, ps)
 
     print("=" * 55)
     print("Parameter Recovery:")
     print(f"  Total RMSE:   {recovery['total_rmse']:.4f}")
-    for g, v in recovery.get("per_group_rmse", {}).items():
-        print(f"  {g:12s}:   {v:.4f}")
+    for g, v in recovery.get("per_group", {}).items():
+        print(f"  {g:12s}:   {v['rmse']:.4f}")
     print()
     print("Covariance Calibration:")
     print(f"  Pearson r:    {calibration['pearson_correlation']:.3f}")
@@ -226,7 +253,7 @@ def cmd_verify(args):
     if args.output:
         out = Path(args.output)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps({"recovery": recovery, "calibration": calibration}, indent=2))
+        out.write_text(json.dumps({**calibration, "recovery": recovery}, indent=2))
         print(f"\nSaved to {args.output}")
 
 

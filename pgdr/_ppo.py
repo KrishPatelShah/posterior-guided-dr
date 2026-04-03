@@ -238,7 +238,7 @@ class PPOAgent:
         )
 
         # JIT the inner functions
-        self._jit_step = jax.jit(self._env_step)
+        self._jit_step = jax.jit(self._env_step, static_argnums=0)
         self._jit_update = jax.jit(self._update_epoch)
 
     # ------------------------------------------------------------------

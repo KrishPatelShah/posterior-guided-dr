@@ -18,19 +18,27 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
 
+if platform.system() == "Darwin":
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+
 import jax
 import jax.numpy as jnp
+import numpy as np
 import yaml
+
+from pgdr.model_utils import load_mj_model, resolve_model_xml, resolve_param_space_path
 
 
 def load_identification_results(results_dir: str) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Load p* and Σ from a previous identification run."""
-    p_star = jnp.load(os.path.join(results_dir, "p_star.npy"))
-    Sigma = jnp.load(os.path.join(results_dir, "Sigma.npy"))
+    p_star = jnp.array(np.load(os.path.join(results_dir, "p_star.npy")))
+    Sigma = jnp.array(np.load(os.path.join(results_dir, "Sigma.npy")))
     return p_star, Sigma
 
 
@@ -127,11 +135,9 @@ def train_single_condition(
     Returns:
         Dictionary with training results (final reward, wall time, etc.).
     """
-    import mujoco
-    from mujoco import mjx
-
     from pgdr.param_space import ParamSpace, build_t1_param_space, _find_foot_geoms
-    from pgdr.pgdr_randomizer import PGDRRandomizer, DRMode, build_randomizer
+    from pgdr.pgdr_randomizer import build_randomizer
+    from mujoco import mjx
 
     run_name = f"{condition_name}_seed{seed}"
     save_dir = Path(checkpoint_dir) / run_name
@@ -152,7 +158,7 @@ def train_single_condition(
         return {"status": "dry_run", "condition": condition_name, "seed": seed}
 
     # --- Load model and parameter space ---
-    mj_model = mujoco.MjModel.from_xml_path(model_xml)
+    mj_model = load_mj_model(model_xml)
     if param_space_path and Path(param_space_path).exists():
         ps = ParamSpace.load(param_space_path)
     else:
@@ -363,7 +369,7 @@ def train_all(args):
                 seed=seed,
                 checkpoint_dir=args.checkpoint_dir,
                 model_xml=args.model_xml,
-                param_space_path=args.param_space,
+                param_space_path=resolve_param_space_path(args.param_space, args.results_dir),
                 dry_run=args.dry_run,
             )
             all_results.append(result)

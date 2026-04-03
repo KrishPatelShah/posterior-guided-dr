@@ -1,0 +1,11 @@
+{
+  "condition": "C1_uniform_dr",
+  "seed": 0,
+  "status": "completed",
+  "num_updates": 1,
+  "elapsed_seconds": 107.74269008636475,
+  "episode_returns": [
+    0.6533358097076416
+  ],
+  "checkpoint_dir": "pgdr/checkpoints/20260402_175132_smoke_smoke/C1_uniform_dr_seed0"
+}

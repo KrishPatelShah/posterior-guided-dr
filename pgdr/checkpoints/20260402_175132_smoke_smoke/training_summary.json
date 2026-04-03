@@ -1,0 +1,68 @@
+[
+  {
+    "condition": "C1_uniform_dr",
+    "seed": 0,
+    "status": "completed",
+    "num_updates": 1,
+    "elapsed_seconds": 107.74269008636475,
+    "episode_returns": [
+      0.6533358097076416
+    ],
+    "checkpoint_dir": "pgdr/checkpoints/20260402_175132_smoke_smoke/C1_uniform_dr_seed0"
+  },
+  {
+    "condition": "C2_pure_sysid",
+    "seed": 0,
+    "status": "completed",
+    "num_updates": 1,
+    "elapsed_seconds": 69.87784910202026,
+    "episode_returns": [
+      0.6316116452217102
+    ],
+    "checkpoint_dir": "pgdr/checkpoints/20260402_175132_smoke_smoke/C2_pure_sysid_seed0"
+  },
+  {
+    "condition": "C3_isotropic",
+    "seed": 0,
+    "status": "completed",
+    "num_updates": 1,
+    "elapsed_seconds": 69.85775685310364,
+    "episode_returns": [
+      0.6379721164703369
+    ],
+    "checkpoint_dir": "pgdr/checkpoints/20260402_175132_smoke_smoke/C3_isotropic_seed0"
+  },
+  {
+    "condition": "C4_pgdr_0.5",
+    "seed": 0,
+    "status": "completed",
+    "num_updates": 1,
+    "elapsed_seconds": 68.60813474655151,
+    "episode_returns": [
+      0.6344424486160278
+    ],
+    "checkpoint_dir": "pgdr/checkpoints/20260402_175132_smoke_smoke/C4_pgdr_0.5_seed0"
+  },
+  {
+    "condition": "C4_pgdr_1.0",
+    "seed": 0,
+    "status": "completed",
+    "num_updates": 1,
+    "elapsed_seconds": 70.1306459903717,
+    "episode_returns": [
+      0.6378875970840454
+    ],
+    "checkpoint_dir": "pgdr/checkpoints/20260402_175132_smoke_smoke/C4_pgdr_1.0_seed0"
+  },
+  {
+    "condition": "C4_pgdr_2.0",
+    "seed": 0,
+    "status": "completed",
+    "num_updates": 1,
+    "elapsed_seconds": 69.29608726501465,
+    "episode_returns": [
+      0.6572241187095642
+    ],
+    "checkpoint_dir": "pgdr/checkpoints/20260402_175132_smoke_smoke/C4_pgdr_2.0_seed0"
+  }
+]

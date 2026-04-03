@@ -1,0 +1,11 @@
+{
+  "condition": "C4_pgdr_2.0",
+  "seed": 0,
+  "status": "completed",
+  "num_updates": 1,
+  "elapsed_seconds": 48.15840005874634,
+  "episode_returns": [
+    0.671502411365509
+  ],
+  "checkpoint_dir": "pgdr/checkpoints/20260402_183554_friction_only_smoke/C4_pgdr_2.0_seed0"
+}

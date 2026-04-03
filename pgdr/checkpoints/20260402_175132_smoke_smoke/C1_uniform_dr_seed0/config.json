@@ -1,0 +1,25 @@
+{
+  "condition": "C1_uniform_dr",
+  "condition_config": {
+    "dr_mode": "uniform",
+    "description": "Default MuJoCo Playground uniform DR"
+  },
+  "training": {
+    "algorithm": "PPO",
+    "num_envs": 8,
+    "num_steps": 4,
+    "total_timesteps": 32,
+    "learning_rate": 0.0003,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip_eps": 0.2,
+    "entropy_coef": 0.01,
+    "value_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "num_minibatches": 1,
+    "update_epochs": 1,
+    "normalize_advantages": true,
+    "episode_length": 100
+  },
+  "seed": 0
+}

@@ -27,6 +27,7 @@ import numpy as np
 
 from pgdr.param_space import ParamSpace, build_t1_param_space, inject_contact_params_to_all_feet
 from pgdr.sysid import ReferenceTrajectory
+from pgdr.t1_env import _build_obs
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +107,8 @@ def evaluate_velocity_tracking(
                 data, rng = carry
                 rng, action_rng = jax.random.split(rng)
 
-                obs = jnp.concatenate([data.qpos, data.qvel])
+                command = jnp.array([target_vx, target_vy, target_wz], dtype=data.qpos.dtype)
+                obs = _build_obs(data, command, mjx_model)
                 action = policy_fn(obs, action_rng)
                 data = data.replace(ctrl=action)
 
@@ -472,7 +474,7 @@ def evaluate_all_conditions(
                 agent = PPOAgent.load(policy_path, rng)
 
                 # Build eval model using p_star (nominal conditions)
-                eval_mjx_model = ps.inject(mj_model_mjx, p_star)
+                eval_mjx_model = param_space.inject(mj_model_mjx, p_star)
 
                 # Build deterministic policy function
                 def policy_fn(obs, rng_unused):
