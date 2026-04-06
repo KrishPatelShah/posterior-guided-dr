@@ -57,6 +57,8 @@ from pgdr.sysid import (
     SysIdConfig,
     create_sim_a,
     collect_reference_trajectory,
+    collect_reference_from_onnx_policy,
+    load_onnx_policy,
     run_identification,
     _generate_action_sequence,
 )
@@ -106,6 +108,13 @@ def main() -> None:
         type=int,
         default=42,
         help="Random seed for Sim A creation. (default: 42)",
+    )
+    parser.add_argument(
+        "--onnx-policy",
+        default=None,
+        metavar="PATH",
+        help="Path to ONNX policy for closed-loop reference collection. "
+             "If omitted, uses sinusoidal actions.",
     )
     args = parser.parse_args()
 
@@ -170,9 +179,19 @@ def main() -> None:
         {"vx": 0.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
     ])
     control_dt = raw_cfg.get("reference", {}).get("control_dt", 0.02)
-    actions = _generate_action_sequence(mj_model, commands, control_dt)
 
-    ref = collect_reference_trajectory(mj_model, ps, p_true_norm, actions)
+    if args.onnx_policy:
+        print(f"  Using ONNX policy: {args.onnx_policy}")
+        session, input_name, output_name = load_onnx_policy(args.onnx_policy)
+        ref = collect_reference_from_onnx_policy(
+            mj_model, ps, p_true_norm,
+            session, input_name, output_name,
+            commands, control_dt,
+        )
+    else:
+        actions = _generate_action_sequence(mj_model, commands, control_dt)
+        ref = collect_reference_trajectory(mj_model, ps, p_true_norm, actions)
+
     ref.save(str(out_dir / "reference.npz"))
     print(f"  Saved reference.npz  (T={ref.q.shape[0]} steps, nu={ref.actions.shape[1]})")
 

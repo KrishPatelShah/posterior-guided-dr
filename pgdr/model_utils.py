@@ -21,13 +21,26 @@ def resolve_model_xml(model_xml: str) -> str:
     return str(Path(model_xml).expanduser().resolve())
 
 
-def load_mj_model(model_xml: str) -> mujoco.MjModel:
-    """Load the MuJoCo model after resolving aliases and relative paths."""
+def load_mj_model(model_xml: str, njmax: int = 500, nconmax: int = 200) -> mujoco.MjModel:
+    """Load the MuJoCo model after resolving aliases and relative paths.
+
+    njmax/nconmax are increased from their defaults to prevent 'nefc overflow'
+    warnings during mujoco_warp parallel rollouts with large population sizes.
+    """
     if model_xml in _PLAYGROUND_T1_ALIASES:
         from mujoco_playground._src.locomotion.t1 import base
+        import re
 
         assets = base.get_assets()
         xml = assets["scene_mjx_feetonly_flat_terrain.xml"].decode()
+
+        # Inject or replace <size> element to avoid nefc overflow in warp rollouts
+        size_tag = f'<size njmax="{njmax}" nconmax="{nconmax}"/>'
+        if "<size" in xml:
+            xml = re.sub(r"<size[^/]*/?>", size_tag, xml)
+        else:
+            xml = re.sub(r"(<mujoco[^>]*>)", r"\1\n  " + size_tag, xml)
+
         return mujoco.MjModel.from_xml_string(xml, assets)
 
     return mujoco.MjModel.from_xml_path(resolve_model_xml(model_xml))

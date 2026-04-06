@@ -98,6 +98,10 @@ def cmd_create_sim_a(args):
     ps = (ParamSpace.load(args.param_space)
           if args.param_space else build_t1_param_space(mj_model))
 
+    if args.friction_only:
+        ps = ps.select_by_group(["friction"])
+        print(f"Using friction-only param space (d={ps.d})")
+
     p_true_norm, p_true_phys = create_sim_a(
         mj_model=mj_model,
         param_space=ps,
@@ -116,7 +120,10 @@ def cmd_create_sim_a(args):
 
 def cmd_collect_reference(args):
     from pgdr.param_space import build_t1_param_space, ParamSpace
-    from pgdr.sysid import collect_reference_trajectory, SysIdConfig, _generate_action_sequence
+    from pgdr.sysid import (
+        collect_reference_trajectory, SysIdConfig, _generate_action_sequence,
+        collect_reference_from_onnx_policy, load_onnx_policy,
+    )
 
     mj_model = load_mj_model(args.model_xml)
     ps = (ParamSpace.load(args.param_space)
@@ -127,18 +134,16 @@ def cmd_collect_reference(args):
 
     # Load or zero-init parameters
     if args.sim_a_params:
-        p_norm = jnp.array(np.load(args.sim_a_params))
+        p_norm = np.load(args.sim_a_params)
         print(f"Using Sim A params from {args.sim_a_params}")
     else:
-        p_norm = jnp.zeros(ps.d)
+        p_norm = np.zeros(ps.d)
         print("Using default parameters (real-robot mode — inject real data manually)")
 
-    # Generate scripted action sequence from velocity commands
     raw_cfg = {}
     if cfg_path:
         with open(cfg_path) as f:
             raw_cfg = yaml.safe_load(f) or {}
-
     commands = raw_cfg.get("reference", {}).get("commands", [
         {"vx": 1.0, "vy": 0.0, "wz": 0.0, "duration": 5.0},
         {"vx": 0.0, "vy": 0.0, "wz": 0.5, "duration": 3.0},
@@ -146,17 +151,33 @@ def cmd_collect_reference(args):
         {"vx": 0.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
     ])
     control_dt = raw_cfg.get("reference", {}).get("control_dt", 0.02)
-    actions = _generate_action_sequence(mj_model, commands, control_dt=control_dt)
-    print(f"Generated action sequence: T={actions.shape[0]}, nu={actions.shape[1]}")
 
-    print("Rolling out reference trajectory...")
-    ref = collect_reference_trajectory(
-        mj_model=mj_model,
-        param_space=ps,
-        p_normalized=p_norm,
-        actions=actions,
-        n_substeps=10,
-    )
+    if args.onnx_policy:
+        print(f"Loading ONNX policy from {args.onnx_policy}...")
+        session, input_name, output_name = load_onnx_policy(args.onnx_policy)
+        print(f"Rolling out ONNX policy (closed-loop)...")
+        ref = collect_reference_from_onnx_policy(
+            mj_model=mj_model,
+            param_space=ps,
+            p_normalized=p_norm,
+            onnx_session=session,
+            onnx_input_name=input_name,
+            onnx_output_name=output_name,
+            commands=commands,
+            control_dt=control_dt,
+            n_substeps=10,
+        )
+    else:
+        actions = _generate_action_sequence(mj_model, commands, control_dt=control_dt)
+        print(f"Generated sinusoidal action sequence: T={actions.shape[0]}, nu={actions.shape[1]}")
+        print("Rolling out reference trajectory...")
+        ref = collect_reference_trajectory(
+            mj_model=mj_model,
+            param_space=ps,
+            p_normalized=p_norm,
+            actions=actions,
+            n_substeps=10,
+        )
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -172,6 +193,11 @@ def cmd_identify(args):
     mj_model = load_mj_model(args.model_xml)
     ps = (ParamSpace.load(args.param_space)
           if args.param_space else build_t1_param_space(mj_model))
+
+    if args.friction_only:
+        ps = ps.select_by_group(["friction"])
+        print(f"Using friction-only param space (d={ps.d})")
+
     print(f"Parameter space: d={ps.d}")
 
     cfg = SysIdConfig.from_yaml(args.config) if args.config else SysIdConfig()
@@ -280,6 +306,8 @@ def main():
     p.add_argument("--perturb", type=float, default=0.15)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--param-space", default=None)
+    p.add_argument("--friction-only", action="store_true",
+                   help="Only perturb friction (dof_damping) parameters")
     p.add_argument("--output-dir", default="pgdr/results/")
 
     p = subs.add_parser("collect-reference", help="Collect reference trajectories")
@@ -288,12 +316,18 @@ def main():
                    help="p_true.npy from create-sim-a (None = default model)")
     p.add_argument("--param-space", default=None)
     p.add_argument("--config", default=None)
+    p.add_argument("--onnx-policy", default=None, metavar="PATH",
+                   help="Path to ONNX policy file.  If provided, uses closed-loop "
+                        "ONNX rollout instead of sinusoidal actions.")
     p.add_argument("--output", default="pgdr/results/reference.npz")
 
     p = subs.add_parser("identify", help="Run CMA-ES identification → p*, Σ")
     p.add_argument("--model-xml", required=True)
     p.add_argument("--reference", required=True)
     p.add_argument("--param-space", default=None)
+    p.add_argument("--friction-only", action="store_true",
+                   help="Identify only friction (dof_damping) parameters. "
+                        "Ignored if --param-space already points to a friction-only space.")
     p.add_argument("--config", default="pgdr/config/sysid_config.yaml")
     p.add_argument("--output-dir", default="pgdr/results/")
 

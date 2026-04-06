@@ -34,6 +34,195 @@ from pgdr.param_space import ParamSpace, build_t1_param_space, inject_contact_pa
 
 
 # ---------------------------------------------------------------------------
+# ONNX policy helpers
+# ---------------------------------------------------------------------------
+
+def _build_obs_np(
+    mj_model: mujoco.MjModel,
+    mj_data: mujoco.MjData,
+    command: np.ndarray,
+    last_action: np.ndarray,
+    phase: np.ndarray,
+    default_angles: np.ndarray,
+) -> np.ndarray:
+    """
+    Build the 85-dim observation expected by the mujoco_playground T1 ONNX policy.
+
+    Layout (matches play_t1_joystick.py OnnxController.get_obs exactly):
+        local_linvel        3   — from "local_linvel" sensor
+        gyro                3   — from "gyro" sensor
+        gravity             3   — imu_xmat.T @ [0,0,-1]
+        command             3   — [vx, vy, wz]
+        joint_angles-def   23   — qpos[7:] - default_angles  (indices 0,1 zeroed)
+        joint_vel          23   — qvel[6:]                    (indices 0,1 zeroed)
+        last_action        23   — raw ONNX output from previous step
+        phase               4   — [cos(ph0), cos(ph1), sin(ph0), sin(ph1)]
+    Total: 85
+    """
+    linvel  = mj_data.sensor("local_linvel").data.copy()
+    gyro    = mj_data.sensor("gyro").data.copy()
+
+    imu_id  = mj_model.site("imu").id
+    imu_xmat = mj_data.site_xmat[imu_id].reshape(3, 3)
+    gravity  = imu_xmat.T @ np.array([0.0, 0.0, -1.0])
+
+    joint_angles = mj_data.qpos[7:] - default_angles
+    joint_vel    = mj_data.qvel[6:].copy()
+
+    # Head joints (indices 0, 1) are not observable for locomotion
+    joint_angles[:2] = 0.0
+    joint_vel[:2]    = 0.0
+
+    ph     = phase if np.linalg.norm(command) >= 0.01 else np.ones(2) * np.pi
+    phase4 = np.concatenate([np.cos(ph), np.sin(ph)])
+
+    return np.concatenate([
+        linvel,          # 3
+        gyro,            # 3
+        gravity,         # 3
+        command,         # 3
+        joint_angles,    # 23
+        joint_vel,       # 23
+        last_action,     # 23
+        phase4,          # 4
+    ]).astype(np.float32)  # total: 85
+
+
+def load_onnx_policy(policy_path: str) -> tuple:
+    """
+    Load an ONNX policy.
+
+    Returns:
+        (session, input_name, output_name)
+    """
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        raise ImportError(
+            "onnxruntime not installed.  Install with:\n"
+            "  pip install onnxruntime"
+        )
+
+    session     = ort.InferenceSession(str(policy_path))
+    input_name  = session.get_inputs()[0].name
+    output_name = session.get_outputs()[0].name
+    input_shape = session.get_inputs()[0].shape
+    print(f"  ONNX policy: input='{input_name}' {input_shape}  "
+          f"output='{output_name}'")
+    return session, input_name, output_name
+
+
+def collect_reference_from_onnx_policy(
+    mj_model: mujoco.MjModel,
+    param_space: ParamSpace,
+    p_normalized,
+    onnx_session,
+    onnx_input_name: str,
+    onnx_output_name: str,
+    commands: list,
+    control_dt: float = 0.02,
+    n_substeps: int = 10,
+) -> "ReferenceTrajectory":
+    """
+    Roll out an ONNX policy on a single-world MuJoCo sim and record the
+    resulting reference trajectory.
+
+    The policy is run in closed-loop: obs → ONNX → action → step.
+    Uses plain mujoco (not mujoco_warp) since only one world is needed.
+
+    Args:
+        mj_model:         Base MuJoCo model (not modified permanently).
+        param_space:      Parameter space for Sim A injection.
+        p_normalized:     [d] normalized Sim A parameters to inject.
+        onnx_session:     ONNX InferenceSession from load_onnx_policy().
+        onnx_input_name:  ONNX input node name.
+        onnx_output_name: ONNX output node name.
+        commands:         List of {vx, vy, wz, duration} dicts.
+        control_dt:       Control timestep (seconds).
+        n_substeps:       Physics substeps per control step.
+
+    Returns:
+        ReferenceTrajectory with recorded (q, qdot, actions).
+    """
+    p_norm_np = np.array(p_normalized)
+
+    # --- Save fields we'll modify so we can restore them afterwards ---
+    saved_fields: dict[str, np.ndarray] = {}
+    for param in param_space.params:
+        key = param.mjx_field
+        if key not in saved_fields:
+            saved_fields[key] = getattr(mj_model, key).copy()
+
+    # Inject Sim A parameters in-place
+    param_space.inject_cpu(mj_model, p_norm_np)
+
+    # --- Set up MuJoCo data ---
+    mj_data = mujoco.MjData(mj_model)
+    if mj_model.nkey > 0:
+        mujoco.mj_resetDataKeyframe(mj_model, mj_data, 0)
+    else:
+        mujoco.mj_resetData(mj_model, mj_data)
+        mj_data.qpos[2] = 0.78   # approximate T1 standing height
+        mj_data.qpos[3] = 1.0    # quaternion w=1 (upright)
+    mujoco.mj_forward(mj_model, mj_data)
+
+    # Policy state that persists across steps
+    default_angles = (
+        mj_model.key_qpos[0][7:].copy() if mj_model.nkey > 0
+        else np.zeros(mj_model.nu)
+    )
+    last_action  = np.zeros(mj_model.nu, dtype=np.float32)
+    phase        = np.array([0.0, np.pi], dtype=np.float64)
+    gait_freq    = 1.5
+    phase_dt     = 2.0 * np.pi * gait_freq * control_dt   # ~0.1885 rad/step
+
+    qs: list[np.ndarray]       = []
+    qdots: list[np.ndarray]    = []
+    actions_out: list[np.ndarray] = []
+
+    for cmd_dict in commands:
+        command = np.array([
+            cmd_dict.get("vx", 0.0),
+            cmd_dict.get("vy", 0.0),
+            cmd_dict.get("wz", 0.0),
+        ], dtype=np.float32)
+        n_steps = int(cmd_dict["duration"] / control_dt)
+
+        for _ in range(n_steps):
+            obs = _build_obs_np(
+                mj_model, mj_data, command, last_action, phase, default_angles
+            )
+            onnx_pred = onnx_session.run(
+                [onnx_output_name],
+                {onnx_input_name: obs[None]},
+            )[0][0]
+
+            # ctrl = raw_output + default_angles  (action_scale = 1.0)
+            ctrl = onnx_pred + default_angles
+            mj_data.ctrl[:] = ctrl
+            for _ in range(n_substeps):
+                mujoco.mj_step(mj_model, mj_data)
+
+            qs.append(mj_data.qpos.copy())
+            qdots.append(mj_data.qvel.copy())
+            actions_out.append(ctrl.copy())   # record applied ctrl for replay
+
+            last_action = onnx_pred.copy()
+            phase = np.fmod(phase + phase_dt + np.pi, 2.0 * np.pi) - np.pi
+
+    # --- Restore original model fields ---
+    for key, val in saved_fields.items():
+        getattr(mj_model, key)[:] = val
+
+    return ReferenceTrajectory(
+        q=np.array(qs),
+        qdot=np.array(qdots),
+        actions=np.array(actions_out, dtype=np.float64),
+        dt=control_dt,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
