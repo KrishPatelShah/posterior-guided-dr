@@ -1,7 +1,0 @@
-# @package _global_
-
-defaults:
-  - /algo: ppo
-  - /env: go2_omni
-
-experiment_name: TEST_go2_omni

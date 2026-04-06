@@ -3,51 +3,32 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "spi-active"
-version = "0.0.1"
-description = "SPi-Active: Sampling-based SysID"
-readme = "README.md"
+name = "pgdr"
+version = "0.1.0"
+description = "PGDR: Posterior-Guided Domain Randomization via Sampling-Based System Identification"
 license = { text = "MIT" }
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.10"
 dependencies = [
-  "hydra-core>=1.2.0",
+  # Core scientific
   "numpy>=1.26.0",
-  "rich",
-  "ipdb",
-  "matplotlib",
-  "termcolor",
-  "wandb",
-  "plotly",
-  "tqdm",
-  "loguru",
-  "meshcat",
-  "pynput",
-  "scipy",
-  "tensorboard",
-  "onnx",
-  "onnxruntime<1.20.0",
-  "opencv-python",
-  "joblib",
-  "easydict",
-  "lxml",
-  "numpy-stl",
-  "open3d; sys_platform == 'linux'",
-  "optuna",
-  # PGDR dependencies
+  "scipy>=1.11.0",
+  "matplotlib>=3.8.0",
+  # JAX / MuJoCo stack
   "jax>=0.4.20",
   "flax>=0.8.0",
   "optax>=0.2.0",
   "mujoco>=3.1.0",
   "mujoco-mjx>=3.1.0",
+  # CMA-ES
   "evosax>=0.1.6",
   "cmaes>=0.10.0",
-  # "mujoco-playground>=0.0.2",  # not on PyPI; optional, only used in t1_env.py
+  # Utilities
+  "tqdm",
+  "pyyaml",
 ]
 
 [project.urls]
-Homepage = "https://github.com/LeCAR-Lab/spi-active"
+Homepage = "https://github.com/andrewliu08/SPI-Active"
 
 [tool.setuptools.packages.find]
-# mirror setup.py's find_packages()
-include = ["*"]
-
+include = ["pgdr*"]
