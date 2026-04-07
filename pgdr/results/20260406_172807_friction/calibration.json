@@ -1,0 +1,183 @@
+{
+  "pearson_correlation": -0.31740063428878784,
+  "spearman_correlation": -0.25790515542030334,
+  "per_group_correlation": {
+    "friction": -0.31740063428878784
+  },
+  "per_param": [
+    {
+      "name": "friction_AAHead_yaw",
+      "group": "friction",
+      "uncertainty": 0.022889243438839912,
+      "sq_error": 1.3297826051712036
+    },
+    {
+      "name": "friction_Head_pitch",
+      "group": "friction",
+      "uncertainty": 0.01980731077492237,
+      "sq_error": 1.1875510215759277
+    },
+    {
+      "name": "friction_Left_Shoulder_Pitch",
+      "group": "friction",
+      "uncertainty": 0.010849175974726677,
+      "sq_error": 0.0059340172447264194
+    },
+    {
+      "name": "friction_Left_Shoulder_Roll",
+      "group": "friction",
+      "uncertainty": 0.017558883875608444,
+      "sq_error": 2.9203274250030518
+    },
+    {
+      "name": "friction_Left_Elbow_Pitch",
+      "group": "friction",
+      "uncertainty": 0.014057879336178303,
+      "sq_error": 0.4806893765926361
+    },
+    {
+      "name": "friction_Left_Elbow_Yaw",
+      "group": "friction",
+      "uncertainty": 0.02139236032962799,
+      "sq_error": 2.0975186824798584
+    },
+    {
+      "name": "friction_Right_Shoulder_Pitch",
+      "group": "friction",
+      "uncertainty": 0.024608930572867393,
+      "sq_error": 1.1027758121490479
+    },
+    {
+      "name": "friction_Right_Shoulder_Roll",
+      "group": "friction",
+      "uncertainty": 0.022036220878362656,
+      "sq_error": 3.952979803085327
+    },
+    {
+      "name": "friction_Right_Elbow_Pitch",
+      "group": "friction",
+      "uncertainty": 0.020353807136416435,
+      "sq_error": 0.8944687843322754
+    },
+    {
+      "name": "friction_Right_Elbow_Yaw",
+      "group": "friction",
+      "uncertainty": 0.015267767012119293,
+      "sq_error": 0.012951858341693878
+    },
+    {
+      "name": "friction_Waist",
+      "group": "friction",
+      "uncertainty": 0.019057532772421837,
+      "sq_error": 1.7050515413284302
+    },
+    {
+      "name": "friction_Left_Hip_Pitch",
+      "group": "friction",
+      "uncertainty": 0.009203387424349785,
+      "sq_error": 3.3152642250061035
+    },
+    {
+      "name": "friction_Left_Hip_Roll",
+      "group": "friction",
+      "uncertainty": 0.011317793279886246,
+      "sq_error": 7.394084453582764
+    },
+    {
+      "name": "friction_Left_Hip_Yaw",
+      "group": "friction",
+      "uncertainty": 0.01682795211672783,
+      "sq_error": 6.891303539276123
+    },
+    {
+      "name": "friction_Left_Knee_Pitch",
+      "group": "friction",
+      "uncertainty": 0.009631176479160786,
+      "sq_error": 7.456226348876953
+    },
+    {
+      "name": "friction_Left_Ankle_Pitch",
+      "group": "friction",
+      "uncertainty": 0.014546371065080166,
+      "sq_error": 0.9003360867500305
+    },
+    {
+      "name": "friction_Left_Ankle_Roll",
+      "group": "friction",
+      "uncertainty": 0.014526089653372765,
+      "sq_error": 6.276169776916504
+    },
+    {
+      "name": "friction_Right_Hip_Pitch",
+      "group": "friction",
+      "uncertainty": 0.015149427577853203,
+      "sq_error": 5.098521709442139
+    },
+    {
+      "name": "friction_Right_Hip_Roll",
+      "group": "friction",
+      "uncertainty": 0.010167030617594719,
+      "sq_error": 7.051835536956787
+    },
+    {
+      "name": "friction_Right_Hip_Yaw",
+      "group": "friction",
+      "uncertainty": 0.01892937533557415,
+      "sq_error": 7.384793281555176
+    },
+    {
+      "name": "friction_Right_Knee_Pitch",
+      "group": "friction",
+      "uncertainty": 0.012095347978174686,
+      "sq_error": 5.414590358734131
+    },
+    {
+      "name": "friction_Right_Ankle_Pitch",
+      "group": "friction",
+      "uncertainty": 0.013138338923454285,
+      "sq_error": 0.9063810110092163
+    },
+    {
+      "name": "friction_Right_Ankle_Roll",
+      "group": "friction",
+      "uncertainty": 0.019525855779647827,
+      "sq_error": 4.831247806549072
+    }
+  ],
+  "interpretation": "Negative correlation: unexpected. The covariance may be miscalibrated. Consider using empirical covariance instead.",
+  "recovery": {
+    "total_rmse": 8.86627197265625,
+    "per_group": {
+      "friction": {
+        "rmse": 8.86627197265625,
+        "mean_per_param": 1.6535626649856567,
+        "num_params": 23
+      }
+    },
+    "per_param_sq_error": [
+      1.3297826051712036,
+      1.1875510215759277,
+      0.0059340172447264194,
+      2.9203274250030518,
+      0.4806893765926361,
+      2.0975186824798584,
+      1.1027758121490479,
+      3.952979803085327,
+      0.8944687843322754,
+      0.012951858341693878,
+      1.7050515413284302,
+      3.3152642250061035,
+      7.394084453582764,
+      6.891303539276123,
+      7.456226348876953,
+      0.9003360867500305,
+      6.276169776916504,
+      5.098521709442139,
+      7.051835536956787,
+      7.384793281555176,
+      5.414590358734131,
+      0.9063810110092163,
+      4.831247806549072
+    ]
+  }
+}

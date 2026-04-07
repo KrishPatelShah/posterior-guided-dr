@@ -47,6 +47,8 @@ def run_sensitivity_analysis(
     perturbation: float = 0.2,
     n_substeps: int = 10,
     rng_seed: int = 0,
+    w_q: float = 1.0,
+    w_qdot: float = 0.1,
 ) -> dict:
     """
     One-at-a-time perturbation study using mujoco_warp parallel worlds.
@@ -80,14 +82,14 @@ def run_sensitivity_analysis(
     pos_div = np.array([
         compute_trajectory_divergence(
             _traj_to_dict(q_traj[1 + i], qdot_traj[1 + i]),
-            baseline_traj,
+            baseline_traj, w_q=w_q, w_qdot=w_qdot,
         )
         for i in range(d)
     ])
     neg_div = np.array([
         compute_trajectory_divergence(
             _traj_to_dict(q_traj[1 + d + i], qdot_traj[1 + d + i]),
-            baseline_traj,
+            baseline_traj, w_q=w_q, w_qdot=w_qdot,
         )
         for i in range(d)
     ])

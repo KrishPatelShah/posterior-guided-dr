@@ -2,23 +2,34 @@
 # =============================================
 
 cmaes:
-  popsize: 512              # Population size per generation (leverage GPU parallelism)
+  popsize: 64               # Small enough that most candidates stay near the mean
   num_generations: 300      # Max generations (monitor convergence for early stop)
   sigma_init: 0.3           # Initial step size in normalized parameter space
+  sigma_max: 0.5            # Cap sigma — tighter than 512-popsize run needs
   seed: 42
 
 loss:
   w_q: 1.0                  # Weight on joint position MSE
-  w_qdot: 0.1               # Weight on joint velocity MSE (less reliable than positions)
+  w_qdot: 1.0               # Weight on joint velocity MSE (friction-sensitive)
+  clip: 10.0                # Cap individual losses before CMA-ES tell() to suppress fall noise
 
 reference:
-  # Scripted command sequence for trajectory collection
+  # Used only when --onnx-policy is NOT provided (sinusoidal fallback mode).
   commands:
-    - {vx: 1.0, vy: 0.0, wz: 0.0, duration: 5.0}   # Walk forward
-    - {vx: 0.0, vy: 0.0, wz: 0.5, duration: 3.0}    # Turn left
-    - {vx: -0.5, vy: 0.0, wz: 0.0, duration: 3.0}   # Walk backward
-    - {vx: 0.0, vy: 0.0, wz: 0.0, duration: 2.0}    # Stand still
+    - {vx: 1.0, vy: 0.0, wz: 0.0, duration: 5.0}
+    - {vx: 0.0, vy: 0.0, wz: 0.5, duration: 3.0}
+    - {vx: -0.5, vy: 0.0, wz: 0.0, duration: 3.0}
+    - {vx: 0.0, vy: 0.0, wz: 0.0, duration: 2.0}
   control_dt: 0.02          # 50 Hz control rate
+
+excitation:
+  # Standing perturbation mode (used when --onnx-policy is provided).
+  # Policy holds balance; sinusoidal perturbations excite joint damping.
+  # Mirror this exactly on the real robot to collect reference data.
+  warmup_duration: 2.0      # seconds of unperturbed standing before excitation
+  excitation_duration: 8.0  # seconds of sinusoidal perturbation
+  perturb_amplitude: 0.05   # rad added to each joint's policy output
+  perturb_freq: 1.0         # Hz — slow enough to be safe on real hardware
 
 sim_a:
   perturbation_scale: 0.15  # 15% perturbation from defaults for Sim A ground truth

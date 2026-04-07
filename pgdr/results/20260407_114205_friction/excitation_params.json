@@ -1,0 +1,6 @@
+{
+  "freq": 2.0,
+  "amplitude": 0.1,
+  "duration": 10.0,
+  "method": "fixed_sinusoidal"
+}

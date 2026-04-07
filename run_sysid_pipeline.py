@@ -57,10 +57,13 @@ from pgdr.sysid import (
     SysIdConfig,
     create_sim_a,
     collect_reference_trajectory,
-    collect_reference_from_onnx_policy,
-    load_onnx_policy,
     run_identification,
-    _generate_action_sequence,
+)
+from pgdr.excitation import (
+    cheetah_baseline_actions,
+    optimize_sinusoidal_excitation,
+    save_excitation,
+    load_excitation,
 )
 from pgdr.evaluate import compute_covariance_calibration, compute_param_recovery
 
@@ -110,11 +113,44 @@ def main() -> None:
         help="Random seed for Sim A creation. (default: 42)",
     )
     parser.add_argument(
-        "--onnx-policy",
+        "--optimal-excitation",
+        action="store_true",
+        help="Run FIM-optimal sinusoidal excitation design before sysid. "
+             "Finds the frequency, per-joint amplitude, and per-joint phase "
+             "that maximise Fisher Information for the target groups. "
+             "Slower but produces better-calibrated covariance than the "
+             "cheetah fixed-sinusoidal baseline.",
+    )
+    parser.add_argument(
+        "--excitation-dir",
         default=None,
         metavar="PATH",
-        help="Path to ONNX policy for closed-loop reference collection. "
-             "If omitted, uses sinusoidal actions.",
+        help="Load a precomputed excitation from this directory instead of "
+             "running optimisation or the fixed baseline. "
+             "Directory must contain excitation_actions.npy and "
+             "excitation_params.json (output of a previous --optimal-excitation run).",
+    )
+    parser.add_argument(
+        "--exc-duration", type=float, default=10.0,
+        help="Excitation duration in seconds (default: 10.0)",
+    )
+    parser.add_argument(
+        "--exc-amplitude", type=float, default=0.1,
+        help="Amplitude for fixed sinusoidal baseline (rad, default: 0.1). "
+             "Ignored when --optimal-excitation is set.",
+    )
+    parser.add_argument(
+        "--exc-freq", type=float, default=2.0,
+        help="Frequency for fixed sinusoidal baseline (Hz, default: 2.0). "
+             "Ignored when --optimal-excitation is set.",
+    )
+    parser.add_argument(
+        "--opt-popsize", type=int, default=16,
+        help="CMA-ES population size for excitation optimisation (default: 16)",
+    )
+    parser.add_argument(
+        "--opt-generations", type=int, default=50,
+        help="CMA-ES generations for excitation optimisation (default: 50)",
     )
     args = parser.parse_args()
 
@@ -169,28 +205,61 @@ def main() -> None:
     print(f"  Saved p_true.npy  (d={p_true_norm.shape[0]})")
 
     # ------------------------------------------------------------------ #
-    # Stage 2: Collect reference trajectory
+    # Stage 2: Design excitation + collect reference trajectory
     # ------------------------------------------------------------------ #
-    print("\n[2/4] Collecting reference trajectory...")
-    commands = raw_cfg.get("reference", {}).get("commands", [
-        {"vx": 1.0, "vy": 0.0, "wz": 0.0, "duration": 5.0},
-        {"vx": 0.0, "vy": 0.0, "wz": 0.5, "duration": 3.0},
-        {"vx": -0.5, "vy": 0.0, "wz": 0.0, "duration": 3.0},
-        {"vx": 0.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
-    ])
+    print("\n[2/4] Designing excitation and collecting reference trajectory...")
     control_dt = raw_cfg.get("reference", {}).get("control_dt", 0.02)
 
-    if args.onnx_policy:
-        print(f"  Using ONNX policy: {args.onnx_policy}")
-        session, input_name, output_name = load_onnx_policy(args.onnx_policy)
-        ref = collect_reference_from_onnx_policy(
-            mj_model, ps, p_true_norm,
-            session, input_name, output_name,
-            commands, control_dt,
+    if args.excitation_dir:
+        # Load precomputed optimal excitation from a previous run
+        print(f"  Loading precomputed excitation from {args.excitation_dir}")
+        actions, exc_params = load_excitation(args.excitation_dir)
+        print(f"  freq={exc_params['freq']:.2f}Hz  "
+              f"duration={exc_params['duration']}s  T={len(actions)} steps")
+
+    elif args.optimal_excitation:
+        # FIM-optimal excitation: CMA-ES over (freq, amplitudes, phases)
+        print(f"  Running FIM-optimal excitation design "
+              f"(popsize={args.opt_popsize}, max_gen={args.opt_generations})...")
+        actions, exc_params, opt_history = optimize_sinusoidal_excitation(
+            mj_model, ps,
+            target_groups=filter_groups or ["friction", "mass", "actuator", "contact"],
+            duration=args.exc_duration,
+            control_dt=control_dt,
+            amplitude_max=args.exc_amplitude,
+            popsize=args.opt_popsize,
+            max_generations=args.opt_generations,
         )
+        save_excitation(actions, exc_params, str(out_dir))
+        (out_dir / "excitation_opt_history.json").write_text(
+            json.dumps(opt_history, indent=2, default=float)
+        )
+        print(f"  Optimal: freq={exc_params['freq']:.2f}Hz  "
+              f"duration={exc_params['duration']}s  T={len(actions)} steps")
+
     else:
-        actions = _generate_action_sequence(mj_model, commands, control_dt)
-        ref = collect_reference_trajectory(mj_model, ps, p_true_norm, actions)
+        # Fixed sinusoidal baseline (cheetah method, known-good)
+        print(f"  Using fixed sinusoidal baseline  "
+              f"(freq={args.exc_freq}Hz, A={args.exc_amplitude}rad, "
+              f"duration={args.exc_duration}s)")
+        actions = cheetah_baseline_actions(
+            mj_model,
+            duration=args.exc_duration,
+            control_dt=control_dt,
+            freq=args.exc_freq,
+            amplitude=args.exc_amplitude,
+        )
+        exc_params = {
+            "freq": args.exc_freq,
+            "amplitude": args.exc_amplitude,
+            "duration": args.exc_duration,
+            "method": "fixed_sinusoidal",
+        }
+
+    ref = collect_reference_trajectory(mj_model, ps, p_true_norm, actions)
+    (out_dir / "excitation_params.json").write_text(
+        json.dumps(exc_params, indent=2, default=float)
+    )
 
     ref.save(str(out_dir / "reference.npz"))
     print(f"  Saved reference.npz  (T={ref.q.shape[0]} steps, nu={ref.actions.shape[1]})")

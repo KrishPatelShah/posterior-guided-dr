@@ -122,6 +122,9 @@ def collect_reference_from_onnx_policy(
     commands: list,
     control_dt: float = 0.02,
     n_substeps: int = 10,
+    perturb_amplitude: float = 0.0,
+    perturb_freq: float = 1.0,
+    warmup_steps: int = 100,
 ) -> "ReferenceTrajectory":
     """
     Roll out an ONNX policy on a single-world MuJoCo sim and record the
@@ -130,16 +133,26 @@ def collect_reference_from_onnx_policy(
     The policy is run in closed-loop: obs → ONNX → action → step.
     Uses plain mujoco (not mujoco_warp) since only one world is needed.
 
+    When perturb_amplitude > 0, sinusoidal perturbations with evenly-spaced
+    per-joint phase offsets are added on top of the policy output after
+    warmup_steps steps.  This makes joint damping identifiable from the
+    velocity response without requiring the robot to walk — the same
+    procedure runs safely on the real robot (policy holds balance).
+
     Args:
-        mj_model:         Base MuJoCo model (not modified permanently).
-        param_space:      Parameter space for Sim A injection.
-        p_normalized:     [d] normalized Sim A parameters to inject.
-        onnx_session:     ONNX InferenceSession from load_onnx_policy().
-        onnx_input_name:  ONNX input node name.
-        onnx_output_name: ONNX output node name.
-        commands:         List of {vx, vy, wz, duration} dicts.
-        control_dt:       Control timestep (seconds).
-        n_substeps:       Physics substeps per control step.
+        mj_model:           Base MuJoCo model (not modified permanently).
+        param_space:        Parameter space for Sim A injection.
+        p_normalized:       [d] normalized Sim A parameters to inject.
+        onnx_session:       ONNX InferenceSession from load_onnx_policy().
+        onnx_input_name:    ONNX input node name.
+        onnx_output_name:   ONNX output node name.
+        commands:           List of {vx, vy, wz, duration} dicts.
+        control_dt:         Control timestep (seconds).
+        n_substeps:         Physics substeps per control step.
+        perturb_amplitude:  Amplitude of sinusoidal joint perturbations (rad).
+                            0.0 disables perturbation (default, original behaviour).
+        perturb_freq:       Frequency of perturbations (Hz).
+        warmup_steps:       Steps before perturbation starts (policy stabilises first).
 
     Returns:
         ReferenceTrajectory with recorded (q, qdot, actions).
@@ -176,9 +189,14 @@ def collect_reference_from_onnx_policy(
     gait_freq    = 1.5
     phase_dt     = 2.0 * np.pi * gait_freq * control_dt   # ~0.1885 rad/step
 
+    # Per-joint phase offsets for perturbation: evenly spread across [0, 2π)
+    # so each joint's sinusoid is independent → all 23 damping values observable.
+    perturb_phases = np.linspace(0, 2 * np.pi, mj_model.nu, endpoint=False)
+
     qs: list[np.ndarray]       = []
     qdots: list[np.ndarray]    = []
     actions_out: list[np.ndarray] = []
+    global_step = 0
 
     for cmd_dict in commands:
         command = np.array([
@@ -199,6 +217,17 @@ def collect_reference_from_onnx_policy(
 
             # ctrl = raw_output + default_angles  (action_scale = 1.0)
             ctrl = onnx_pred + default_angles
+
+            # Joint perturbation: added after policy warmup.
+            # Each joint gets a sinusoid at a different phase so all 23
+            # damping values are independently excited.  The policy still
+            # runs closed-loop for balance — only the recorded ctrl changes.
+            if perturb_amplitude > 0.0 and global_step >= warmup_steps:
+                t = (global_step - warmup_steps) * control_dt
+                ctrl = ctrl + perturb_amplitude * np.sin(
+                    2.0 * np.pi * perturb_freq * t + perturb_phases
+                )
+
             mj_data.ctrl[:] = ctrl
             for _ in range(n_substeps):
                 mujoco.mj_step(mj_model, mj_data)
@@ -209,6 +238,7 @@ def collect_reference_from_onnx_policy(
 
             last_action = onnx_pred.copy()
             phase = np.fmod(phase + phase_dt + np.pi, 2.0 * np.pi) - np.pi
+            global_step += 1
 
     # --- Restore original model fields ---
     for key, val in saved_fields.items():
@@ -240,6 +270,8 @@ class SysIdConfig:
     cov_method: str = "optimizer"       # "optimizer" or "empirical"
     empirical_top_k_frac: float = 0.25
     regularization_eps: float = 1e-6
+    sigma_max: float = 1.0              # hard cap on CMA-ES step size
+    loss_clip: float = 10.0            # clip individual losses before tell()
 
     @classmethod
     def from_yaml(cls, path: str) -> SysIdConfig:
@@ -261,6 +293,8 @@ class SysIdConfig:
             cov_method=cov.get("method", "optimizer"),
             empirical_top_k_frac=cov.get("empirical_top_k_frac", 0.25),
             regularization_eps=cov.get("regularization_eps", 1e-6),
+            sigma_max=cmaes.get("sigma_max", 1.0),
+            loss_clip=loss.get("clip", 10.0),
         )
 
 
@@ -427,7 +461,7 @@ def collect_reference_trajectory(
 
     warp_model = mujoco_warp.put_model(mj_model)
     warp_model = _warp_model_with_params(warp_model, param_space, p_norm_np)
-    warp_data  = mujoco_warp.make_data(mj_model, nworld=1)
+    warp_data  = mujoco_warp.make_data(mj_model, nworld=1, njmax=256, nconmax=128)
 
     q, qdot = _rollout_warp(warp_model, warp_data, actions_np, n_substeps)
     # q shape: (1, T, nq) → squeeze world dim
@@ -471,15 +505,19 @@ def batch_evaluate_warp(
     # Build per-world model and initial data
     warp_model = mujoco_warp.put_model(mj_model)
     warp_model = _warp_model_with_params(warp_model, param_space, candidates)
-    warp_data  = mujoco_warp.make_data(mj_model, nworld=nworld)
+    warp_data  = mujoco_warp.make_data(mj_model, nworld=nworld, njmax=256, nconmax=128)
 
     q_sim, qdot_sim = _rollout_warp(warp_model, warp_data, actions, n_substeps)
     # q_sim: [nworld, T, nq]
 
+    # Match only joint angles/velocities (skip floating base: qpos[0:7], qvel[0:6]).
+    # Base position reflects global trajectory drift, which is equally affected by
+    # all friction params and washes out individual joint signals.
     losses = (
-        w_q    * np.mean((q_sim    - ref_q[None])    ** 2, axis=(1, 2)) +
-        w_qdot * np.mean((qdot_sim - ref_qdot[None]) ** 2, axis=(1, 2))
+        w_q    * np.mean((q_sim[:, :, 7:]    - ref_q[None, :, 7:])    ** 2, axis=(1, 2)) +
+        w_qdot * np.mean((qdot_sim[:, :, 6:] - ref_qdot[None, :, 6:]) ** 2, axis=(1, 2))
     )
+    losses = np.where(np.isfinite(losses), losses, 1e6)
     return losses
 
 
@@ -524,11 +562,16 @@ def _run_with_cmaes_warp(
     """CMA-ES loop driven by the `cmaes` package, evaluation via mujoco_warp."""
     from cmaes import CMA
 
+    # Bounds in normalized space: ±3 keeps params within physical plausibility.
+    # Without bounds, sigma grows when the landscape is flat, sending candidates
+    # to extreme values that cause NaN simulation explosions.
+    bounds = np.array([[-3.0, 3.0]] * d)
     optimizer = CMA(
         mean=np.zeros(d),
         sigma=config.sigma_init,
         population_size=config.popsize,
         seed=config.seed,
+        bounds=bounds,
     )
 
     history = {"generation": [], "best_loss": [], "mean_loss": [], "sigma": []}
@@ -542,7 +585,14 @@ def _run_with_cmaes_warp(
 
         losses = evaluate_fn(candidates)
 
-        optimizer.tell([(solutions[i], float(losses[i])) for i in range(config.popsize)])
+        # Clip losses before telling CMA-ES so blown-up simulations don't
+        # distort the covariance update toward useless regions.
+        losses_clipped = np.clip(losses, 0.0, config.loss_clip)
+        optimizer.tell([(solutions[i], float(losses_clipped[i])) for i in range(config.popsize)])
+
+        # Hard cap on sigma — prevents unbounded growth when landscape is flat.
+        if optimizer._sigma > config.sigma_max:
+            optimizer._sigma = config.sigma_max
 
         gen_best = float(np.min(losses))
         gen_mean = float(np.mean(losses))
