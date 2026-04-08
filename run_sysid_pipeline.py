@@ -135,9 +135,10 @@ def main() -> None:
         help="Excitation duration in seconds (default: 10.0)",
     )
     parser.add_argument(
-        "--exc-amplitude", type=float, default=0.1,
-        help="Amplitude for fixed sinusoidal baseline (rad, default: 0.1). "
-             "Ignored when --optimal-excitation is set.",
+        "--exc-amplitude", type=float, default=0.3,
+        help="Amplitude / amplitude_max for sinusoidal excitation (rad, default: 0.3). "
+             "For fixed baseline: uniform amplitude. "
+             "For --optimal-excitation: upper bound on per-joint amplitude.",
     )
     parser.add_argument(
         "--exc-freq", type=float, default=2.0,

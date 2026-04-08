@@ -409,6 +409,7 @@ def _rollout_warp(
     data: "mujoco_warp._src.types.Data",
     actions: np.ndarray,
     n_substeps: int,
+    fix_root: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Open-loop rollout using mujoco_warp.step for all worlds in parallel.
@@ -418,6 +419,11 @@ def _rollout_warp(
         data:        Warp data (nworld initial states).
         actions:     [T, nu] action sequence (same for all worlds).
         n_substeps:  Physics substeps per control step.
+        fix_root:    If True, pin the floating-base root body after each
+                     control step — root qpos stays at initial pose, root
+                     qvel stays zero.  Joint DOFs are unaffected.
+                     Use this for sensitivity / FIM rollouts where you want
+                     clean joint-level signals without the robot drifting.
 
     Returns:
         q    [nworld, T, nq]
@@ -431,12 +437,24 @@ def _rollout_warp(
     q_traj    = np.zeros((nworld, T, nq))
     qdot_traj = np.zeros((nworld, T, nv))
 
+    # Snapshot initial root pose (first 7 qpos entries: 3 pos + 4 quat)
+    root_qpos0 = data.qpos.numpy()[:, :7].copy() if fix_root else None
+
     ctrl_buf = data.ctrl.numpy()
     for t, action in enumerate(actions):
         ctrl_buf[:] = action[None, :]           # broadcast action to all worlds
         data.ctrl.assign(ctrl_buf)
         for _ in range(n_substeps):
             mujoco_warp.step(model, data)
+
+        if fix_root:
+            qpos = data.qpos.numpy()
+            qvel = data.qvel.numpy()
+            qpos[:, :7] = root_qpos0            # restore root position/orientation
+            qvel[:, :6] = 0.0                   # zero root linear/angular velocity
+            data.qpos.assign(qpos)
+            data.qvel.assign(qvel)
+
         q_traj[:, t, :]    = data.qpos.numpy()
         qdot_traj[:, t, :] = data.qvel.numpy()
 
@@ -450,6 +468,7 @@ def collect_reference_trajectory(
     actions,
     n_substeps: int = 10,
     foot_geom_ids: Optional[list[int]] = None,
+    fix_root: bool = True,
 ) -> ReferenceTrajectory:
     """
     Roll out the simulation with given parameters, using mujoco_warp (CPU).
@@ -463,7 +482,7 @@ def collect_reference_trajectory(
     warp_model = _warp_model_with_params(warp_model, param_space, p_norm_np)
     warp_data  = mujoco_warp.make_data(mj_model, nworld=1, njmax=256, nconmax=128)
 
-    q, qdot = _rollout_warp(warp_model, warp_data, actions_np, n_substeps)
+    q, qdot = _rollout_warp(warp_model, warp_data, actions_np, n_substeps, fix_root=fix_root)
     # q shape: (1, T, nq) → squeeze world dim
     dt = float(mj_model.opt.timestep * n_substeps)
     return ReferenceTrajectory(
@@ -507,7 +526,7 @@ def batch_evaluate_warp(
     warp_model = _warp_model_with_params(warp_model, param_space, candidates)
     warp_data  = mujoco_warp.make_data(mj_model, nworld=nworld, njmax=256, nconmax=128)
 
-    q_sim, qdot_sim = _rollout_warp(warp_model, warp_data, actions, n_substeps)
+    q_sim, qdot_sim = _rollout_warp(warp_model, warp_data, actions, n_substeps, fix_root=True)
     # q_sim: [nworld, T, nq]
 
     # Match only joint angles/velocities (skip floating base: qpos[0:7], qvel[0:6]).

@@ -1,0 +1,183 @@
+{
+  "pearson_correlation": 0.28929978609085083,
+  "spearman_correlation": 0.5918972492218018,
+  "per_group_correlation": {
+    "friction": 0.28929978609085083
+  },
+  "per_param": [
+    {
+      "name": "friction_AAHead_yaw",
+      "group": "friction",
+      "uncertainty": 0.0283323023468256,
+      "sq_error": 0.006763716693967581
+    },
+    {
+      "name": "friction_Head_pitch",
+      "group": "friction",
+      "uncertainty": 0.02656032331287861,
+      "sq_error": 0.0001731511001707986
+    },
+    {
+      "name": "friction_Left_Shoulder_Pitch",
+      "group": "friction",
+      "uncertainty": 0.027489790692925453,
+      "sq_error": 0.00024154428683687001
+    },
+    {
+      "name": "friction_Left_Shoulder_Roll",
+      "group": "friction",
+      "uncertainty": 0.028842868283391,
+      "sq_error": 0.008854029700160027
+    },
+    {
+      "name": "friction_Left_Elbow_Pitch",
+      "group": "friction",
+      "uncertainty": 0.02653973363339901,
+      "sq_error": 0.00492825685068965
+    },
+    {
+      "name": "friction_Left_Elbow_Yaw",
+      "group": "friction",
+      "uncertainty": 0.028277378529310226,
+      "sq_error": 0.027333617210388184
+    },
+    {
+      "name": "friction_Right_Shoulder_Pitch",
+      "group": "friction",
+      "uncertainty": 0.02833089418709278,
+      "sq_error": 0.01342807523906231
+    },
+    {
+      "name": "friction_Right_Shoulder_Roll",
+      "group": "friction",
+      "uncertainty": 0.028588267043232918,
+      "sq_error": 0.008646294474601746
+    },
+    {
+      "name": "friction_Right_Elbow_Pitch",
+      "group": "friction",
+      "uncertainty": 0.027064355090260506,
+      "sq_error": 0.00018048597848974168
+    },
+    {
+      "name": "friction_Right_Elbow_Yaw",
+      "group": "friction",
+      "uncertainty": 0.02861599251627922,
+      "sq_error": 0.0009816037490963936
+    },
+    {
+      "name": "friction_Waist",
+      "group": "friction",
+      "uncertainty": 0.025677628815174103,
+      "sq_error": 0.0012941581662744284
+    },
+    {
+      "name": "friction_Left_Hip_Pitch",
+      "group": "friction",
+      "uncertainty": 0.028586292639374733,
+      "sq_error": 0.03553367033600807
+    },
+    {
+      "name": "friction_Left_Hip_Roll",
+      "group": "friction",
+      "uncertainty": 0.029715675860643387,
+      "sq_error": 0.06950010359287262
+    },
+    {
+      "name": "friction_Left_Hip_Yaw",
+      "group": "friction",
+      "uncertainty": 0.028362587094306946,
+      "sq_error": 0.002456034068018198
+    },
+    {
+      "name": "friction_Left_Knee_Pitch",
+      "group": "friction",
+      "uncertainty": 0.030334236100316048,
+      "sq_error": 0.004323017783463001
+    },
+    {
+      "name": "friction_Left_Ankle_Pitch",
+      "group": "friction",
+      "uncertainty": 0.02935059182345867,
+      "sq_error": 0.18942119181156158
+    },
+    {
+      "name": "friction_Left_Ankle_Roll",
+      "group": "friction",
+      "uncertainty": 0.02896905690431595,
+      "sq_error": 0.010493130423128605
+    },
+    {
+      "name": "friction_Right_Hip_Pitch",
+      "group": "friction",
+      "uncertainty": 0.028814315795898438,
+      "sq_error": 0.0013086757389828563
+    },
+    {
+      "name": "friction_Right_Hip_Roll",
+      "group": "friction",
+      "uncertainty": 0.03030700422823429,
+      "sq_error": 0.018935319036245346
+    },
+    {
+      "name": "friction_Right_Hip_Yaw",
+      "group": "friction",
+      "uncertainty": 0.02781403623521328,
+      "sq_error": 0.00034055259311571717
+    },
+    {
+      "name": "friction_Right_Knee_Pitch",
+      "group": "friction",
+      "uncertainty": 0.029077108949422836,
+      "sq_error": 0.025881731882691383
+    },
+    {
+      "name": "friction_Right_Ankle_Pitch",
+      "group": "friction",
+      "uncertainty": 0.02977452613413334,
+      "sq_error": 0.017867904156446457
+    },
+    {
+      "name": "friction_Right_Ankle_Roll",
+      "group": "friction",
+      "uncertainty": 0.03133773431181908,
+      "sq_error": 0.017620759084820747
+    }
+  ],
+  "interpretation": "Moderate positive correlation: CMA-ES covariance partially reflects uncertainty. PGDR should provide benefit over isotropic DR.",
+  "recovery": {
+    "total_rmse": 0.6830132007598877,
+    "per_group": {
+      "friction": {
+        "rmse": 0.6830132007598877,
+        "mean_per_param": 0.10673052817583084,
+        "num_params": 23
+      }
+    },
+    "per_param_sq_error": [
+      0.006763716693967581,
+      0.0001731511001707986,
+      0.00024154428683687001,
+      0.008854029700160027,
+      0.00492825685068965,
+      0.027333617210388184,
+      0.01342807523906231,
+      0.008646294474601746,
+      0.00018048597848974168,
+      0.0009816037490963936,
+      0.0012941581662744284,
+      0.03553367033600807,
+      0.06950010359287262,
+      0.002456034068018198,
+      0.004323017783463001,
+      0.18942119181156158,
+      0.010493130423128605,
+      0.0013086757389828563,
+      0.018935319036245346,
+      0.00034055259311571717,
+      0.025881731882691383,
+      0.017867904156446457,
+      0.017620759084820747
+    ]
+  }
+}

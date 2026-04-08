@@ -141,7 +141,7 @@ def optimize_sinusoidal_excitation(
     duration: float = 10.0,
     control_dt: float = 0.02,
     freq_range: tuple[float, float] = (0.2, 5.0),
-    amplitude_max: float = 0.2,
+    amplitude_max: float = 0.3,
     perturbation: float = 0.2,
     n_substeps: int = 10,
     w_q: float = 1.0,
@@ -151,16 +151,16 @@ def optimize_sinusoidal_excitation(
     seed: int = 42,
 ) -> tuple[np.ndarray, dict, dict]:
     """
-    CMA-ES over (freq, amplitudes[nu], phases[nu]) to maximise FIM
-    trace for the target parameter groups.
+    CMA-ES over (freq, amplitudes[nu]) to maximise FIM trace for the
+    target parameter groups. Phases are fixed to evenly-spaced values
+    (cheetah baseline) since over many periods (duration/freq >> 1)
+    phase offset has negligible effect on identifiability.
 
-    Optimization space (d = 1 + 2*nu, all normalized to [-1, 1]):
-        x[0]         → frequency   (log-uniform in freq_range)
-        x[1:nu+1]    → amplitudes  (uniform in [0, amplitude_max])
-        x[nu+1:2nu+1]→ phases      (uniform in [0, 2π])
+    Optimization space (d = 1 + nu, all normalized to [-1, 1]):
+        x[0]      → frequency  (log-uniform in freq_range)
+        x[1:nu+1] → amplitudes (uniform in [0, amplitude_max])
 
-    Initialized near the cheetah baseline (freq=2Hz, uniform amp,
-    evenly-spaced phases) so optimization starts from a known-good point.
+    Initialized near the cheetah baseline (freq=2Hz, uniform amp).
 
     Returns:
         best_actions: [T, nu] optimal ctrl sequence.
@@ -170,9 +170,12 @@ def optimize_sinusoidal_excitation(
     from cmaes import CMA
 
     nu = mj_model.nu
-    d_opt = 1 + 2 * nu
+    d_opt = 1 + nu
     log_fmin = np.log(freq_range[0])
     log_fmax = np.log(freq_range[1])
+
+    # Phases fixed to evenly-spaced (cheetah baseline) — irrelevant over many periods
+    fixed_phases = np.linspace(0, 2.0 * np.pi, nu, endpoint=False)
 
     target_params = [p.name for p in param_space.params if p.group in target_groups]
 
@@ -181,14 +184,12 @@ def optimize_sinusoidal_excitation(
             log_fmin + (np.clip(x[0], -1, 1) + 1) / 2.0 * (log_fmax - log_fmin)
         ))
         amplitudes = amplitude_max * (np.clip(x[1:nu+1], -1, 1) + 1) / 2.0
-        phases = np.pi * (np.clip(x[nu+1:], -1, 1) + 1)   # [0, 2π]
-        return freq, amplitudes, phases
+        return freq, amplitudes, fixed_phases
 
-    # Initialise near cheetah baseline
-    x0_freq  = 2.0 * (np.log(2.0) - log_fmin) / (log_fmax - log_fmin) - 1.0
-    x0_amp   = np.zeros(nu)                                    # → amplitude_max/2
-    x0_phase = np.linspace(-1.0, 1.0, nu, endpoint=False)     # evenly spaced
-    x0 = np.concatenate([[x0_freq], x0_amp, x0_phase])
+    # Initialise near cheetah baseline (freq=2Hz, uniform amp=amplitude_max/2)
+    x0_freq = 2.0 * (np.log(2.0) - log_fmin) / (log_fmax - log_fmin) - 1.0
+    x0_amp  = np.zeros(nu)   # → amplitude_max/2
+    x0 = np.concatenate([[x0_freq], x0_amp])
 
     bounds = np.array([[-1.0, 1.0]] * d_opt)
     optimizer = CMA(
@@ -204,7 +205,7 @@ def optimize_sinusoidal_excitation(
     best_params  = None
     history      = {"generation": [], "best_fim_trace": [], "mean_fim_trace": []}
 
-    print(f"\nOptimising sinusoidal excitation (d={d_opt}: 1 freq + {nu} amp + {nu} phase)")
+    print(f"\nOptimising sinusoidal excitation (d={d_opt}: 1 freq + {nu} amp, phases fixed)")
     print(f"  target groups: {target_groups}")
     print(f"  popsize={popsize}, max_gen={max_generations}, "
           f"duration={duration}s, A_max={amplitude_max}rad\n")
@@ -236,7 +237,8 @@ def optimize_sinusoidal_excitation(
         history["best_fim_trace"].append(gen_best)
         history["mean_fim_trace"].append(gen_mean)
 
-        if gen_best > best_trace:
+        improved = gen_best > best_trace
+        if improved:
             best_trace = gen_best
             best_x     = solutions[int(np.argmax(traces))]
             freq, amplitudes, phases = decode(best_x)
@@ -254,8 +256,9 @@ def optimize_sinusoidal_excitation(
                 w_q, w_qdot,
             )
 
-        print(f"  Gen {gen:3d}: best={gen_best:.4f}  mean={gen_mean:.4f}  "
-              f"freq={decode(solutions[int(np.argmax(traces))])[0]:.2f}Hz")
+        marker = " *" if improved else ""
+        print(f"  Gen {gen:3d}: gen_best={gen_best:.4f}  running_best={best_trace:.4f}  "
+              f"mean={gen_mean:.4f}  freq={decode(solutions[int(np.argmax(traces))])[0]:.2f}Hz{marker}")
 
     return best_actions, best_params, history
 

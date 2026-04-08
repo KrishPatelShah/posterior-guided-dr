@@ -69,12 +69,19 @@ def run_sensitivity_analysis(
 
     nworld = len(perturb_vecs)
 
+    # Disable contacts for sensitivity rollouts: dof_damping is purely a joint-level
+    # velocity term (τ = -damping * qdot) and is independent of ground contacts.
+    # Contacts add expensive CCD computation and corrupt the FIM with fall dynamics.
+    orig_disableflags = int(mj_model.opt.disableflags)
+    mj_model.opt.disableflags |= mujoco.mjtDisableBit.mjDSBL_CONTACT
+
     # Single batched warp rollout — all (2d+1) worlds in parallel
     warp_model = mujoco_warp.put_model(mj_model)
+    mj_model.opt.disableflags = orig_disableflags  # restore before returning
     warp_model = _warp_model_with_params(warp_model, param_space, perturb_vecs)
     warp_data  = mujoco_warp.make_data(mj_model, nworld=nworld)
 
-    q_traj, qdot_traj = _rollout_warp(warp_model, warp_data, actions_np, n_substeps)
+    q_traj, qdot_traj = _rollout_warp(warp_model, warp_data, actions_np, n_substeps, fix_root=True)
     # q_traj: [nworld, T, nq]
 
     baseline_traj = _traj_to_dict(q_traj[0], qdot_traj[0])

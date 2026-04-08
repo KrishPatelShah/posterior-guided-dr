@@ -21,16 +21,19 @@ def resolve_model_xml(model_xml: str) -> str:
     return str(Path(model_xml).expanduser().resolve())
 
 
-def load_mj_model(model_xml: str) -> mujoco.MjModel:
+def load_mj_model(model_xml: str, ccd_iterations: int = 500) -> mujoco.MjModel:
     """Load the MuJoCo model after resolving aliases and relative paths."""
     if model_xml in _PLAYGROUND_T1_ALIASES:
         from mujoco_playground._src.locomotion.t1 import base
 
         assets = base.get_assets()
         xml = assets["scene_mjx_feetonly_flat_terrain.xml"].decode()
-        return mujoco.MjModel.from_xml_string(xml, assets)
+        m = mujoco.MjModel.from_xml_string(xml, assets)
+    else:
+        m = mujoco.MjModel.from_xml_path(resolve_model_xml(model_xml))
 
-    return mujoco.MjModel.from_xml_path(resolve_model_xml(model_xml))
+    m.opt.ccd_iterations = ccd_iterations
+    return m
 
 
 def resolve_param_space_path(
