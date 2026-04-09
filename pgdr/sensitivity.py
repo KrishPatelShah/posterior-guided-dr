@@ -123,6 +123,84 @@ def run_sensitivity_analysis(
     }
 
 
+def run_sensitivity_analysis_batch(
+    mj_model: mujoco.MjModel,
+    param_space: ParamSpace,
+    all_actions: np.ndarray,
+    perturbation: float = 0.2,
+    n_substeps: int = 10,
+    w_q: float = 1.0,
+    w_qdot: float = 0.1,
+) -> list[dict]:
+    """
+    Batched sensitivity analysis for N candidates in a single warp rollout.
+
+    Instead of N separate (2d+1)-world rollouts, this builds one big rollout
+    with N*(2d+1) worlds — one group of (2d+1) perturbations per candidate.
+    Reduces GPU setup overhead by N×.
+
+    Args:
+        all_actions: [N, T, nu] action sequences, one per candidate.
+
+    Returns:
+        List of N dicts, each with key "sensitivity_scores": {param_name: float}.
+    """
+    d = param_space.d
+    ncandidates = len(all_actions)
+    nperturb = 2 * d + 1           # worlds per candidate: 1 baseline + 2*d perturbations
+    nworld   = ncandidates * nperturb
+
+    # Per-candidate perturbation template: [nperturb, d]
+    perturb_single = np.zeros((nperturb, d))
+    for i in range(d):
+        perturb_single[1 + i,     i] =  perturbation
+        perturb_single[1 + d + i, i] = -perturbation
+
+    # Tile across candidates: [nworld, d]
+    perturb_vecs = np.tile(perturb_single, (ncandidates, 1))
+
+    # Per-world actions: repeat each candidate's actions nperturb times
+    # [N, T, nu] → [N*nperturb, T, nu] with candidate i occupying rows [i*nperturb:(i+1)*nperturb]
+    batch_actions = np.repeat(all_actions, nperturb, axis=0)
+
+    orig_disableflags = int(mj_model.opt.disableflags)
+    mj_model.opt.disableflags |= mujoco.mjtDisableBit.mjDSBL_CONTACT
+
+    warp_model = mujoco_warp.put_model(mj_model)
+    mj_model.opt.disableflags = orig_disableflags
+    warp_model = _warp_model_with_params(warp_model, param_space, perturb_vecs)
+    warp_data  = mujoco_warp.make_data(mj_model, nworld=nworld)
+
+    q_traj, qdot_traj = _rollout_warp(warp_model, warp_data, batch_actions, n_substeps, fix_root=True)
+    # q_traj: [nworld, T, nq]
+
+    results = []
+    for c in range(ncandidates):
+        offset = c * nperturb
+        baseline = _traj_to_dict(q_traj[offset], qdot_traj[offset])
+        pos_div = np.array([
+            compute_trajectory_divergence(
+                _traj_to_dict(q_traj[offset + 1 + i], qdot_traj[offset + 1 + i]),
+                baseline, w_q=w_q, w_qdot=w_qdot,
+            )
+            for i in range(d)
+        ])
+        neg_div = np.array([
+            compute_trajectory_divergence(
+                _traj_to_dict(q_traj[offset + 1 + d + i], qdot_traj[offset + 1 + d + i]),
+                baseline, w_q=w_q, w_qdot=w_qdot,
+            )
+            for i in range(d)
+        ])
+        scores = np.maximum(pos_div, neg_div)
+        results.append({
+            "sensitivity_scores": {
+                param_space.params[i].name: float(scores[i]) for i in range(d)
+            }
+        })
+    return results
+
+
 def reduce_param_space(
     param_space: ParamSpace,
     sensitivity_results: dict,

@@ -417,7 +417,8 @@ def _rollout_warp(
     Args:
         model:       Warp model (nworld parameter sets).
         data:        Warp data (nworld initial states).
-        actions:     [T, nu] action sequence (same for all worlds).
+        actions:     [T, nu] action sequence (broadcast to all worlds), OR
+                     [nworld, T, nu] per-world action sequences.
         n_substeps:  Physics substeps per control step.
         fix_root:    If True, pin the floating-base root body after each
                      control step — root qpos stays at initial pose, root
@@ -432,7 +433,9 @@ def _rollout_warp(
     nworld = data.qpos.shape[0]
     nq = data.qpos.shape[1]
     nv = data.qvel.shape[1]
-    T = len(actions)
+
+    per_world = actions.ndim == 3           # [nworld, T, nu] vs [T, nu]
+    T = actions.shape[-2] if per_world else len(actions)
 
     q_traj    = np.zeros((nworld, T, nq))
     qdot_traj = np.zeros((nworld, T, nv))
@@ -441,8 +444,11 @@ def _rollout_warp(
     root_qpos0 = data.qpos.numpy()[:, :7].copy() if fix_root else None
 
     ctrl_buf = data.ctrl.numpy()
-    for t, action in enumerate(actions):
-        ctrl_buf[:] = action[None, :]           # broadcast action to all worlds
+    for t in range(T):
+        if per_world:
+            ctrl_buf[:] = actions[:, t, :]  # [nworld, nu] — per-world control
+        else:
+            ctrl_buf[:] = actions[t][None, :]  # broadcast [nu] → [nworld, nu]
         data.ctrl.assign(ctrl_buf)
         for _ in range(n_substeps):
             mujoco_warp.step(model, data)

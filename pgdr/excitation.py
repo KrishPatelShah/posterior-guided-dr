@@ -35,7 +35,7 @@ import mujoco_warp
 import warp as wp
 import numpy as np
 
-from pgdr.sensitivity import run_sensitivity_analysis
+from pgdr.sensitivity import run_sensitivity_analysis, run_sensitivity_analysis_batch
 
 
 # ---------------------------------------------------------------------------
@@ -246,23 +246,36 @@ def optimize_sinusoidal_excitation(
     print(f"  popsize={popsize}, max_gen={max_generations}, "
           f"duration={duration}s, A_max={amplitude_max}rad\n")
 
+    # Initialise warp once — avoids repeated GPU context setup per generation
+    import warp as _wp
+    _wp.init()
+
+    T = int(duration / control_dt)
+
     for gen in range(max_generations):
         solutions = [optimizer.ask() for _ in range(popsize)]
-        traces    = []
 
-        for x in solutions:
-            joint_freqs, amplitudes, phases = decode(x)
-            try:
-                fim, _ = compute_sinusoidal_fim(
-                    mj_model, param_space,
-                    joint_freqs, amplitudes, phases,
-                    duration, control_dt, perturbation, n_substeps,
-                    w_q, w_qdot,
-                )
-                trace = float(np.sum([fim.get(p, 0.0) for p in target_params]))
-            except Exception:
-                trace = 0.0
-            traces.append(trace)
+        # Build all candidate action sequences: [popsize, T, nu]
+        all_actions = np.zeros((popsize, T, nu))
+        for i, x in enumerate(solutions):
+            jf, amp, ph = decode(x)
+            all_actions[i] = generate_sinusoidal_actions(jf, amp, ph, duration, control_dt, nu)
+
+        # One batched rollout for the entire population (popsize*(2d+1) worlds)
+        try:
+            batch_results = run_sensitivity_analysis_batch(
+                mj_model, param_space, all_actions,
+                perturbation=perturbation,
+                n_substeps=n_substeps,
+                w_q=w_q,
+                w_qdot=w_qdot,
+            )
+            traces = [
+                float(np.sum([r["sensitivity_scores"].get(p, 0.0) for p in target_params]))
+                for r in batch_results
+            ]
+        except Exception:
+            traces = [0.0] * popsize
 
         # CMA-ES minimises — negate for maximisation
         optimizer.tell([(solutions[i], -traces[i]) for i in range(popsize)])
@@ -276,7 +289,8 @@ def optimize_sinusoidal_excitation(
         improved = gen_best > best_trace
         if improved:
             best_trace = gen_best
-            best_x     = solutions[int(np.argmax(traces))]
+            best_idx   = int(np.argmax(traces))
+            best_x     = solutions[best_idx]
             joint_freqs, amplitudes, phases = decode(best_x)
             best_params = {
                 "freqs":      joint_freqs.tolist(),
@@ -287,12 +301,7 @@ def optimize_sinusoidal_excitation(
             }
             if freq_groups is not None:
                 best_params["freq_groups"] = freq_groups
-            _, best_actions = compute_sinusoidal_fim(
-                mj_model, param_space,
-                joint_freqs, amplitudes, phases,
-                duration, control_dt, perturbation, n_substeps,
-                w_q, w_qdot,
-            )
+            best_actions = all_actions[best_idx]  # already computed this generation
 
         best_x_gen    = solutions[int(np.argmax(traces))]
         best_freqs, _, _ = decode(best_x_gen)
