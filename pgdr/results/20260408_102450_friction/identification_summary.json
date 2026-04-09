@@ -1,6 +1,6 @@
 {
-  "final_loss": 0.0004927302563865048,
-  "num_generations_run": 9,
-  "sigma_trace": 0.656762699357053,
-  "sigma_condition_number": 1.5162791903823034
+  "final_loss": 1.333635775591975e-06,
+  "num_generations_run": 100,
+  "sigma_trace": 0.0004915131721645594,
+  "sigma_condition_number": 67.61225891113281
 }
