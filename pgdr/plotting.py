@@ -100,14 +100,15 @@ def plot_covariance_calibration(
             linewidths=0.3,
         )
 
-    # Trend line
+    # Trend line (log-log linear regression: log y = a*log x + b)
     x = np.array([e["uncertainty"] for e in per_param])
     y = np.array([e["sq_error"] for e in per_param])
     if len(x) > 2:
-        z = np.polyfit(x, y, 1)
-        p = np.poly1d(z)
-        x_line = np.linspace(x.min(), x.max(), 100)
-        ax.plot(x_line, p(x_line), "--", color="gray", alpha=0.5, linewidth=1)
+        mask = (x > 0) & (y > 0)
+        if mask.sum() > 2:
+            z = np.polyfit(np.log(x[mask]), np.log(y[mask]), 1)
+            x_line = np.linspace(x[mask].min(), x[mask].max(), 100)
+            ax.plot(x_line, np.exp(z[1]) * x_line ** z[0], "--", color="gray", alpha=0.5, linewidth=1)
 
     # Legend for groups
     for group, color in GROUP_COLORS.items():
@@ -121,11 +122,8 @@ def plot_covariance_calibration(
         f"Pearson r = {pearson:.3f}, Spearman ρ = {spearman:.3f}"
     )
 
-    # Log scale if range is large
-    if x.max() / max(x.min(), 1e-10) > 100:
-        ax.set_xscale("log")
-    if y.max() / max(y.min(), 1e-10) > 100:
-        ax.set_yscale("log")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
 
     fig.tight_layout()
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
