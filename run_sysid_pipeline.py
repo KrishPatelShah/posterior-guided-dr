@@ -153,6 +153,15 @@ def main() -> None:
         "--opt-generations", type=int, default=50,
         help="CMA-ES generations for excitation optimisation (default: 50)",
     )
+    parser.add_argument(
+        "--per-group-freq",
+        action="store_true",
+        help="Use per-group frequencies during excitation optimisation instead of a "
+             "single shared frequency. Expands the search space from (1+nu)D to "
+             "(5+nu)D using T1-specific groups: upper_body, hip_sagittal, hip_roll, "
+             "knee, ankle. Directly addresses under-excitation of roll joints. "
+             "Only active when --optimal-excitation is set.",
+    )
     args = parser.parse_args()
 
     # ------------------------------------------------------------------ #
@@ -211,17 +220,41 @@ def main() -> None:
     print("\n[2/4] Designing excitation and collecting reference trajectory...")
     control_dt = raw_cfg.get("reference", {}).get("control_dt", 0.02)
 
+    # T1 per-group frequency groups (actuator indices, 0-based):
+    #   upper_body:    j=0–10  (head, shoulders, elbows, waist)
+    #   hip_sagittal:  j=11,13,17,19  (hip pitch + yaw, left+right)
+    #   hip_roll:      j=12,18  (left+right hip roll)
+    #   knee:          j=14,20  (left+right knee)
+    #   ankle:         j=15,16,21,22  (left+right ankle pitch+roll)
+    T1_FREQ_GROUPS = [
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # upper_body
+        [11, 13, 17, 19],                       # hip_sagittal
+        [12, 18],                               # hip_roll
+        [14, 20],                               # knee
+        [15, 16, 21, 22],                       # ankle
+    ]
+
+    def _freq_summary(exc_params: dict) -> str:
+        if "freqs" in exc_params:
+            import numpy as _np
+            freqs = _np.array(exc_params["freqs"])
+            unique = _np.unique(_np.round(freqs, 2))
+            return f"freqs=[{', '.join(f'{f:.2f}' for f in unique)}]Hz"
+        return f"freq={exc_params['freq']:.2f}Hz"
+
     if args.excitation_dir:
         # Load precomputed optimal excitation from a previous run
         print(f"  Loading precomputed excitation from {args.excitation_dir}")
         actions, exc_params = load_excitation(args.excitation_dir)
-        print(f"  freq={exc_params['freq']:.2f}Hz  "
+        print(f"  {_freq_summary(exc_params)}  "
               f"duration={exc_params['duration']}s  T={len(actions)} steps")
 
     elif args.optimal_excitation:
-        # FIM-optimal excitation: CMA-ES over (freq, amplitudes, phases)
+        # FIM-optimal excitation: CMA-ES over (freq(s), amplitudes)
+        freq_groups = T1_FREQ_GROUPS if args.per_group_freq else None
         print(f"  Running FIM-optimal excitation design "
-              f"(popsize={args.opt_popsize}, max_gen={args.opt_generations})...")
+              f"(popsize={args.opt_popsize}, max_gen={args.opt_generations}, "
+              f"per_group_freq={args.per_group_freq})...")
         actions, exc_params, opt_history = optimize_sinusoidal_excitation(
             mj_model, ps,
             target_groups=filter_groups or ["friction", "mass", "actuator", "contact"],
@@ -230,12 +263,13 @@ def main() -> None:
             amplitude_max=args.exc_amplitude,
             popsize=args.opt_popsize,
             max_generations=args.opt_generations,
+            freq_groups=freq_groups,
         )
         save_excitation(actions, exc_params, str(out_dir))
         (out_dir / "excitation_opt_history.json").write_text(
             json.dumps(opt_history, indent=2, default=float)
         )
-        print(f"  Optimal: freq={exc_params['freq']:.2f}Hz  "
+        print(f"  Optimal: {_freq_summary(exc_params)}  "
               f"duration={exc_params['duration']}s  T={len(actions)} steps")
 
     else:
