@@ -5,9 +5,9 @@
 training:
   algorithm: "PPO"
   num_envs: 4096
-  num_steps: 10             # Steps per rollout before PPO update
+  num_steps: 20             # Steps per rollout before PPO update
   total_timesteps: 100_000_000   # 100M timesteps total
-  learning_rate: 3.0e-4
+  learning_rate: 1.0e-4
   gamma: 0.99
   gae_lambda: 0.95
   clip_eps: 0.2
