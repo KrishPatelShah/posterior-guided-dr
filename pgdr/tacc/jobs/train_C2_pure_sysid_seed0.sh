@@ -17,8 +17,10 @@ module load python/3.12.11
 source $WORK/pgdr_env/bin/activate
 
 # Set JAX to use GPU
-export XLA_FLAGS="--xla_gpu_cuda_data_dir=$TACC_CUDA_DIR"
-export JAX_PLATFORMS="gpu"
+
+export JAX_PLATFORMS="cuda"
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export LD_LIBRARY_PATH=$TACC_CUDA_DIR/lib64:$LD_LIBRARY_PATH
 
 cd $WORK/posterior-guided-dr
 
