@@ -7,7 +7,7 @@
 #SBATCH -n 1
 #SBATCH --gpus-per-node=1
 #SBATCH -t 12:00:00
-#SBATCH -A al62479
+#SBATCH -A IRI26006
 
 # TACC Lonestar6 module setup
 module load gcc/11.2.0
