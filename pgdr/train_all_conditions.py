@@ -191,6 +191,7 @@ def train_single_condition(
     mjx_model_default = mjx.put_model(mj_model)
 
     tcfg = train_cfg.get("training", {})
+    envcfg = train_cfg.get("environment", {})
     num_envs = tcfg.get("num_envs", 4096)
     episode_length = tcfg.get("episode_length", 1000)
     total_timesteps = tcfg.get("total_timesteps", 100_000_000)
@@ -204,6 +205,7 @@ def train_single_condition(
     num_minibatches = tcfg.get("num_minibatches", 32)
     update_epochs = tcfg.get("update_epochs", 5)
     num_steps = tcfg.get("num_steps", 10)
+    action_scale = envcfg.get("action_scale", 0.25)
 
     num_updates = total_timesteps // (num_envs * num_steps)
 
@@ -229,6 +231,7 @@ def train_single_condition(
         mj_model=mj_model,
         randomizer=randomizer,
         max_episode_steps=episode_length,
+        action_scale=action_scale,
     )
 
     agent = PPOAgent(ppo_cfg, OBS_DIM, ACT_DIM, rng)
@@ -283,6 +286,7 @@ def train_single_condition(
                 obs=jnp.where(done_mask[:, None], new_state.obs, env_state.obs),
                 command=jnp.where(done_mask[:, None], new_state.command, env_state.command),
                 step_count=jnp.where(done_mask, new_state.step_count, env_state.step_count),
+                rng=jnp.where(done_mask[:, None], new_state.rng, env_state.rng),
                 done=jnp.zeros_like(env_state.done),
             )
 
@@ -290,7 +294,8 @@ def train_single_condition(
             elapsed = time_mod.time() - t0
             steps_done = (update + 1) * num_envs * num_steps
             fps = steps_done / max(elapsed, 1e-6)
-            mean_return = float(jnp.mean(rollout.reward))
+            # Sum rewards over the rollout window as a proxy for episode return
+            mean_return = float(jnp.mean(jnp.sum(rollout.reward, axis=0)))
             episode_returns.append(mean_return)
             print(f"    Update {update}/{num_updates}: "
                   f"return={mean_return:.3f}  "

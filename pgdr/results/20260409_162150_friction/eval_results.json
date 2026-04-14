@@ -1,0 +1,229 @@
+{
+  "param_recovery": {
+    "total_rmse": 0.005623004864901304,
+    "per_group": {
+      "friction": {
+        "rmse": 0.005623004864901304,
+        "mean_per_param": 0.0006785384612157941,
+        "num_params": 23
+      }
+    },
+    "per_param_sq_error": [
+      5.2206289069545164e-08,
+      3.520811198143292e-09,
+      2.059344126337237e-07,
+      8.543997864762787e-08,
+      3.1303848402330914e-08,
+      1.795784555724822e-06,
+      4.5787729163748736e-08,
+      1.2486678357959136e-08,
+      1.991346607610467e-07,
+      2.4224627637181584e-08,
+      4.820958743323445e-09,
+      5.857737960468512e-06,
+      8.15776459717199e-08,
+      2.5931751679308945e-07,
+      2.363566835583697e-07,
+      1.5830761185497977e-05,
+      5.990843874315033e-06,
+      1.7277359631862055e-07,
+      5.666056956954435e-09,
+      6.765405125008783e-09,
+      2.7910698463529116e-07,
+      3.9671228080351284e-08,
+      3.969603312725667e-07
+    ]
+  },
+  "covariance_calibration": {
+    "pearson_correlation": 0.5224360227584839,
+    "spearman_correlation": 0.6264822483062744,
+    "per_group_correlation": {
+      "friction": 0.5224360227584839
+    },
+    "per_param": [
+      {
+        "name": "friction_AAHead_yaw",
+        "group": "friction",
+        "uncertainty": 1.9243359474785393e-06,
+        "sq_error": 5.2206289069545164e-08
+      },
+      {
+        "name": "friction_Head_pitch",
+        "group": "friction",
+        "uncertainty": 1.589379621691478e-06,
+        "sq_error": 3.520811198143292e-09
+      },
+      {
+        "name": "friction_Left_Shoulder_Pitch",
+        "group": "friction",
+        "uncertainty": 1.7002117829179042e-06,
+        "sq_error": 2.059344126337237e-07
+      },
+      {
+        "name": "friction_Left_Shoulder_Roll",
+        "group": "friction",
+        "uncertainty": 2.463573082422954e-06,
+        "sq_error": 8.543997864762787e-08
+      },
+      {
+        "name": "friction_Left_Elbow_Pitch",
+        "group": "friction",
+        "uncertainty": 1.7476687617090647e-06,
+        "sq_error": 3.1303848402330914e-08
+      },
+      {
+        "name": "friction_Left_Elbow_Yaw",
+        "group": "friction",
+        "uncertainty": 4.099954821867868e-06,
+        "sq_error": 1.795784555724822e-06
+      },
+      {
+        "name": "friction_Right_Shoulder_Pitch",
+        "group": "friction",
+        "uncertainty": 1.927879566210322e-06,
+        "sq_error": 4.5787729163748736e-08
+      },
+      {
+        "name": "friction_Right_Shoulder_Roll",
+        "group": "friction",
+        "uncertainty": 2.174210294469958e-06,
+        "sq_error": 1.2486678357959136e-08
+      },
+      {
+        "name": "friction_Right_Elbow_Pitch",
+        "group": "friction",
+        "uncertainty": 2.2186898149811896e-06,
+        "sq_error": 1.991346607610467e-07
+      },
+      {
+        "name": "friction_Right_Elbow_Yaw",
+        "group": "friction",
+        "uncertainty": 3.1379256597574567e-06,
+        "sq_error": 2.4224627637181584e-08
+      },
+      {
+        "name": "friction_Waist",
+        "group": "friction",
+        "uncertainty": 1.3383423720370047e-06,
+        "sq_error": 4.820958743323445e-09
+      },
+      {
+        "name": "friction_Left_Hip_Pitch",
+        "group": "friction",
+        "uncertainty": 4.452424491319107e-06,
+        "sq_error": 5.857737960468512e-06
+      },
+      {
+        "name": "friction_Left_Hip_Roll",
+        "group": "friction",
+        "uncertainty": 1.6947325320870732e-06,
+        "sq_error": 8.15776459717199e-08
+      },
+      {
+        "name": "friction_Left_Hip_Yaw",
+        "group": "friction",
+        "uncertainty": 1.6146952930284897e-06,
+        "sq_error": 2.5931751679308945e-07
+      },
+      {
+        "name": "friction_Left_Knee_Pitch",
+        "group": "friction",
+        "uncertainty": 4.06711387768155e-06,
+        "sq_error": 2.363566835583697e-07
+      },
+      {
+        "name": "friction_Left_Ankle_Pitch",
+        "group": "friction",
+        "uncertainty": 1.2146101653343067e-05,
+        "sq_error": 1.5830761185497977e-05
+      },
+      {
+        "name": "friction_Left_Ankle_Roll",
+        "group": "friction",
+        "uncertainty": 2.7648662580759265e-05,
+        "sq_error": 5.990843874315033e-06
+      },
+      {
+        "name": "friction_Right_Hip_Pitch",
+        "group": "friction",
+        "uncertainty": 5.071385658084182e-06,
+        "sq_error": 1.7277359631862055e-07
+      },
+      {
+        "name": "friction_Right_Hip_Roll",
+        "group": "friction",
+        "uncertainty": 2.3210150175145827e-06,
+        "sq_error": 5.666056956954435e-09
+      },
+      {
+        "name": "friction_Right_Hip_Yaw",
+        "group": "friction",
+        "uncertainty": 1.6862377378856763e-06,
+        "sq_error": 6.765405125008783e-09
+      },
+      {
+        "name": "friction_Right_Knee_Pitch",
+        "group": "friction",
+        "uncertainty": 2.4563000806665514e-06,
+        "sq_error": 2.7910698463529116e-07
+      },
+      {
+        "name": "friction_Right_Ankle_Pitch",
+        "group": "friction",
+        "uncertainty": 1.0811172614921816e-05,
+        "sq_error": 3.9671228080351284e-08
+      },
+      {
+        "name": "friction_Right_Ankle_Roll",
+        "group": "friction",
+        "uncertainty": 1.3142947864253074e-05,
+        "sq_error": 3.969603312725667e-07
+      }
+    ],
+    "interpretation": "Strong positive correlation: CMA-ES covariance reliably tracks identification uncertainty. PGDR is well-motivated."
+  },
+  "covariance_spectrum": {
+    "eigenvalues": [
+      2.9761531550320797e-05,
+      1.4791053217777517e-05,
+      1.0134504009329248e-05,
+      9.500312444288284e-06,
+      5.272778253129218e-06,
+      4.435241407918511e-06,
+      4.113302111363737e-06,
+      4.007939423900098e-06,
+      3.1692886750533944e-06,
+      2.627026560730883e-06,
+      2.514018888177816e-06,
+      2.3635357138118707e-06,
+      2.2424028429668397e-06,
+      2.076488726743264e-06,
+      1.8995248183273361e-06,
+      1.8646452417669934e-06,
+      1.7782995200832374e-06,
+      1.648122406550101e-06,
+      1.6017414736779756e-06,
+      1.526877213109401e-06,
+      1.506073886048398e-06,
+      1.343462486147473e-06,
+      1.2570169474201975e-06
+    ],
+    "condition_number": 23.676315307617188,
+    "effective_rank": 23,
+    "trace": 0.00011143495794385672
+  },
+  "C2_pure_sysid_seed0": {
+    "rms_vx": 0.6955157518386841,
+    "rms_vy": 0.13767193257808685,
+    "rms_wz": 0.9555056691169739,
+    "rms_total": 1.1898263692855835,
+    "rms_total_std": 0.0
+  },
+  "C4_pgdr_1.0_seed0": {
+    "rms_vx": 0.7064593434333801,
+    "rms_vy": 0.12495174258947372,
+    "rms_wz": 0.6413406133651733,
+    "rms_total": 0.9622970223426819,
+    "rms_total_std": 0.0
+  }
+}

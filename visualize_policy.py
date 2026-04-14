@@ -109,14 +109,7 @@ def run_rollout(env, policy_fn, commands, control_dt, seed=0):
         # Override environment command
         state = state._replace(command=cmd[None])  # [1, 3]
 
-        # Build obs with overridden command
-        obs = jax.vmap(
-            lambda d, c: _build_obs(d, c, env.randomizer.param_space._mjx_model
-                                    if hasattr(env.randomizer.param_space, '_mjx_model')
-                                    else state.mjx_data)
-        )(state.mjx_data, state.command)
-
-        # Use stored obs from state (already correct after step)
+        # Use stored obs from state (built with current command during step/reset)
         action = policy_fn(state.obs[0])  # [act_dim]
         state = jit_step(state, action[None])  # env expects [1, act_dim]
 
