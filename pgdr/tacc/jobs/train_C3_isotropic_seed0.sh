@@ -20,7 +20,8 @@ source $WORK/pgdr_env/bin/activate
 
 export JAX_PLATFORMS="cuda"
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-export LD_LIBRARY_PATH=$TACC_CUDA_DIR/lib64:$LD_LIBRARY_PATH
+NVIDIA_LIBS=$(find $WORK/pgdr_env/lib/python3.12/site-packages/nvidia -maxdepth 2 -name "lib" -type d 2>/dev/null | tr "\n" ":")
+export LD_LIBRARY_PATH=${NVIDIA_LIBS}$TACC_CUDA_DIR/lib64:$LD_LIBRARY_PATH
 
 cd $WORK/posterior-guided-dr
 
