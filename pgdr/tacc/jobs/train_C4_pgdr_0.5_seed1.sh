@@ -1,0 +1,34 @@
+#!/bin/bash
+#SBATCH -J pgdr_C4_pgdr_0.5_seed1
+#SBATCH -o pgdr/tacc/jobs/logs/C4_pgdr_0.5_seed1_%j.out
+#SBATCH -e pgdr/tacc/jobs/logs/C4_pgdr_0.5_seed1_%j.err
+#SBATCH -p gpu-a100
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -t 12:00:00
+#SBATCH -A IRI26006
+
+# TACC Lonestar6 module setup
+module load gcc/11.2.0
+module load cuda/12.0
+module load python/3.12.11
+
+# Activate environment
+source $WORK/pgdr_env/bin/activate
+
+# Set JAX to use GPU
+
+export JAX_PLATFORMS="cuda"
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+NVIDIA_LIBS=$(find $WORK/pgdr_env/lib/python3.12/site-packages/nvidia -maxdepth 2 -name "lib" -type d 2>/dev/null | tr "\n" ":")
+export LD_LIBRARY_PATH=${NVIDIA_LIBS}$TACC_CUDA_DIR/lib64:$LD_LIBRARY_PATH
+
+cd $WORK/posterior-guided-dr
+
+python -m pgdr.train_all_conditions train \
+    --model-xml t1 \
+    --config pgdr/config/train_config.yaml \
+    --results-dir pgdr/results/20260409_162150_friction/ \
+    --checkpoint-dir pgdr/checkpoints \
+    --conditions C4_pgdr_0.5 \
+    --seeds 1

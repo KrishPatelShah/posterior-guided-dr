@@ -1,4 +1,0 @@
-# Configuration for stand motion dataset
-data_paths:
-  - spigym/data/sysid_bag/go2_stand_data.npz
-

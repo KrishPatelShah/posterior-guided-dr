@@ -25,8 +25,10 @@ import mujoco
 from mujoco import mjx
 import numpy as np
 
+from pgdr.model_utils import load_mj_model
 from pgdr.param_space import ParamSpace, build_t1_param_space, inject_contact_params_to_all_feet
 from pgdr.sysid import ReferenceTrajectory
+from pgdr.t1_env import _build_obs, _get_default_qpos
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +68,7 @@ def evaluate_velocity_tracking(
     mjx_model: mjx.Model,
     command_sequence: list[dict],
     control_dt: float,
+    default_joint_pos: jnp.ndarray,
     n_substeps: int = 10,
     num_episodes: int = 50,
     rng_seed: int = 0,
@@ -106,7 +109,8 @@ def evaluate_velocity_tracking(
                 data, rng = carry
                 rng, action_rng = jax.random.split(rng)
 
-                obs = jnp.concatenate([data.qpos, data.qvel])
+                command = jnp.array([target_vx, target_vy, target_wz], dtype=data.qpos.dtype)
+                obs = _build_obs(data, command, mjx_model, default_joint_pos)
                 action = policy_fn(obs, action_rng)
                 data = data.replace(ctrl=action)
 
@@ -447,6 +451,7 @@ def evaluate_all_conditions(
     }
 
     # --- Per-condition policy evaluation ---
+    default_joint_pos = jnp.array(_get_default_qpos(mj_model)[7:])
     mj_model_mjx = mjx.put_model(mj_model)
     checkpoints = Path(checkpoints_dir)
     if checkpoints.exists():
@@ -472,7 +477,7 @@ def evaluate_all_conditions(
                 agent = PPOAgent.load(policy_path, rng)
 
                 # Build eval model using p_star (nominal conditions)
-                eval_mjx_model = ps.inject(mj_model_mjx, p_star)
+                eval_mjx_model = param_space.inject(mj_model_mjx, p_star)
 
                 # Build deterministic policy function
                 def policy_fn(obs, rng_unused):
@@ -491,6 +496,7 @@ def evaluate_all_conditions(
                     mjx_model=eval_mjx_model,
                     command_sequence=eval_commands,
                     control_dt=0.02,
+                    default_joint_pos=default_joint_pos,
                 )
                 results[condition_name] = vel_results
                 print(f"  RMS vel error: {vel_results.get('rms_total', 'N/A'):.4f}")
@@ -540,7 +546,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.command == "covariance-calibration":
-        mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
+        mj_model = load_mj_model(args.model_xml)
         if args.param_space:
             ps = ParamSpace.load(args.param_space)
         else:
@@ -565,7 +571,7 @@ if __name__ == "__main__":
         print(f"\nSaved to {out}")
 
     elif args.command == "sim2sim":
-        mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
+        mj_model = load_mj_model(args.model_xml)
         if args.param_space:
             ps = ParamSpace.load(args.param_space)
         else:

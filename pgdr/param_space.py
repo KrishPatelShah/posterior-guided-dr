@@ -134,6 +134,32 @@ class ParamSpace:
         n_mul = (p_physical / self._defaults - 1.0) / self._scales
         return additive_mask * n_add + mult_mask * n_mul
 
+    # ---- CPU (plain numpy) injection ---- #
+
+    def to_physical_np(self, p_normalized) -> "np.ndarray":
+        """Convert normalized params to physical using pure numpy (no JAX)."""
+        import numpy as _np
+        result = _np.empty(self.d)
+        for i, p in enumerate(self.params):
+            if p.mode == "additive":
+                val = p.default + float(p_normalized[i]) * p.scale
+            else:
+                val = p.default * (1.0 + float(p_normalized[i]) * p.scale)
+            lo = p.lower if not _np.isinf(p.lower) else -1e30
+            hi = p.upper if not _np.isinf(p.upper) else 1e30
+            result[i] = _np.clip(val, lo, hi)
+        return result
+
+    def inject_cpu(self, mj_model: mujoco.MjModel, p_normalized) -> None:
+        """Inject parameters into a mujoco.MjModel in-place (no JAX/MJX)."""
+        p_phys = self.to_physical_np(p_normalized)
+        for i, param in enumerate(self.params):
+            arr = getattr(mj_model, param.mjx_field)
+            if arr.ndim == 1:
+                arr[param.index] = p_phys[i]
+            else:
+                arr[param.index, param.col] = p_phys[i]
+
     # ---- MJX model injection / extraction ---- #
 
     def inject(self, model: mjx.Model, p_normalized: jnp.ndarray) -> mjx.Model:

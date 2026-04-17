@@ -1,4 +1,0 @@
-# Configuration for walk motion dataset
-data_paths:
-  - spigym/data/sysid_bag/go2_walk_data.npz
-

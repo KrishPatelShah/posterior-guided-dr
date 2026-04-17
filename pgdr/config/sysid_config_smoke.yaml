@@ -1,0 +1,28 @@
+cmaes:
+  popsize: 16
+  num_generations: 10
+  sigma_init: 0.3
+  seed: 42
+
+loss:
+  w_q: 1.0
+  w_qdot: 0.1
+
+reference:
+  commands:
+    - {vx: 1.0, vy: 0.0, wz: 0.0, duration: 3.0}
+    - {vx: 0.0, vy: 0.0, wz: 0.5, duration: 2.0}
+    - {vx: -0.5, vy: 0.0, wz: 0.0, duration: 2.0}
+  control_dt: 0.02
+
+sim_a:
+  perturbation_scale: 0.15
+
+convergence:
+  patience: 5
+  loss_tol: 1.0e-6
+
+covariance:
+  method: "optimizer"
+  empirical_top_k_frac: 0.25
+  regularization_eps: 1.0e-6

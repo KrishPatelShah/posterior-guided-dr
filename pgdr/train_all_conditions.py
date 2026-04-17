@@ -18,19 +18,27 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
 
+if platform.system() == "Darwin":
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+
 import jax
 import jax.numpy as jnp
+import numpy as np
 import yaml
+
+from pgdr.model_utils import load_mj_model, resolve_model_xml, resolve_param_space_path
 
 
 def load_identification_results(results_dir: str) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Load p* and Σ from a previous identification run."""
-    p_star = jnp.load(os.path.join(results_dir, "p_star.npy"))
-    Sigma = jnp.load(os.path.join(results_dir, "Sigma.npy"))
+    p_star = jnp.array(np.load(os.path.join(results_dir, "p_star.npy")))
+    Sigma = jnp.array(np.load(os.path.join(results_dir, "Sigma.npy")))
     return p_star, Sigma
 
 
@@ -127,11 +135,9 @@ def train_single_condition(
     Returns:
         Dictionary with training results (final reward, wall time, etc.).
     """
-    import mujoco
-    from mujoco import mjx
-
     from pgdr.param_space import ParamSpace, build_t1_param_space, _find_foot_geoms
-    from pgdr.pgdr_randomizer import PGDRRandomizer, DRMode, build_randomizer
+    from pgdr.pgdr_randomizer import build_randomizer
+    from mujoco import mjx
 
     run_name = f"{condition_name}_seed{seed}"
     save_dir = Path(checkpoint_dir) / run_name
@@ -152,7 +158,7 @@ def train_single_condition(
         return {"status": "dry_run", "condition": condition_name, "seed": seed}
 
     # --- Load model and parameter space ---
-    mj_model = mujoco.MjModel.from_xml_path(model_xml)
+    mj_model = load_mj_model(model_xml)
     if param_space_path and Path(param_space_path).exists():
         ps = ParamSpace.load(param_space_path)
     else:
@@ -185,6 +191,7 @@ def train_single_condition(
     mjx_model_default = mjx.put_model(mj_model)
 
     tcfg = train_cfg.get("training", {})
+    envcfg = train_cfg.get("environment", {})
     num_envs = tcfg.get("num_envs", 4096)
     episode_length = tcfg.get("episode_length", 1000)
     total_timesteps = tcfg.get("total_timesteps", 100_000_000)
@@ -198,6 +205,7 @@ def train_single_condition(
     num_minibatches = tcfg.get("num_minibatches", 32)
     update_epochs = tcfg.get("update_epochs", 5)
     num_steps = tcfg.get("num_steps", 10)
+    action_scale = envcfg.get("action_scale", 0.25)
 
     num_updates = total_timesteps // (num_envs * num_steps)
 
@@ -223,6 +231,7 @@ def train_single_condition(
         mj_model=mj_model,
         randomizer=randomizer,
         max_episode_steps=episode_length,
+        action_scale=action_scale,
     )
 
     agent = PPOAgent(ppo_cfg, OBS_DIM, ACT_DIM, rng)
@@ -277,6 +286,7 @@ def train_single_condition(
                 obs=jnp.where(done_mask[:, None], new_state.obs, env_state.obs),
                 command=jnp.where(done_mask[:, None], new_state.command, env_state.command),
                 step_count=jnp.where(done_mask, new_state.step_count, env_state.step_count),
+                rng=jnp.where(done_mask[:, None], new_state.rng, env_state.rng),
                 done=jnp.zeros_like(env_state.done),
             )
 
@@ -284,7 +294,8 @@ def train_single_condition(
             elapsed = time_mod.time() - t0
             steps_done = (update + 1) * num_envs * num_steps
             fps = steps_done / max(elapsed, 1e-6)
-            mean_return = float(jnp.mean(rollout.reward))
+            # Sum rewards over the rollout window as a proxy for episode return
+            mean_return = float(jnp.mean(jnp.sum(rollout.reward, axis=0)))
             episode_returns.append(mean_return)
             print(f"    Update {update}/{num_updates}: "
                   f"return={mean_return:.3f}  "
@@ -363,7 +374,7 @@ def train_all(args):
                 seed=seed,
                 checkpoint_dir=args.checkpoint_dir,
                 model_xml=args.model_xml,
-                param_space_path=args.param_space,
+                param_space_path=resolve_param_space_path(args.param_space, args.results_dir),
                 dry_run=args.dry_run,
             )
             all_results.append(result)

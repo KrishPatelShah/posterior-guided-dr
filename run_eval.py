@@ -27,16 +27,23 @@ Typical workflow:
 
 import argparse
 import json
+import os
+import platform
 import sys
 from pathlib import Path
+
+if platform.system() == "Darwin":
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 
 import jax.numpy as jnp
 import numpy as np
 
+from pgdr.model_utils import load_mj_model, resolve_param_space_path
+
 
 def cmd_calibration(args):
     """Check whether CMA-ES covariance reflects true identification uncertainty."""
-    import mujoco
     from pgdr.param_space import build_t1_param_space, ParamSpace
     from pgdr.evaluate import compute_covariance_calibration, compute_param_recovery
 
@@ -45,24 +52,28 @@ def cmd_calibration(args):
         print("This check requires sim-to-sim mode (run run_sysid.py create-sim-a first).")
         sys.exit(1)
 
-    mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
-    ps = (ParamSpace.load(args.param_space)
-          if args.param_space else build_t1_param_space(mj_model))
+    param_space_path = resolve_param_space_path(args.param_space, args.results_dir)
+    mj_model = load_mj_model(args.model_xml)
+    ps = (ParamSpace.load(param_space_path)
+          if param_space_path else build_t1_param_space(mj_model))
 
     rd = Path(args.results_dir)
     p_star = jnp.array(np.load(rd / "p_star.npy"))
     Sigma = jnp.array(np.load(rd / "Sigma.npy"))
     p_true = jnp.array(np.load(rd / "p_true.npy"))
 
+    if p_star.shape[0] != p_true.shape[0]:
+        raise ValueError(
+            f"Shape mismatch: p_star has d={p_star.shape[0]} but p_true has d={p_true.shape[0]}. "
+            "Pass the matching reduced param_space.json or regenerate a clean run directory."
+        )
+
     recovery = compute_param_recovery(p_star, p_true, ps)
     calibration = compute_covariance_calibration(p_star, p_true, Sigma, ps)
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps({
-        "recovery": recovery,
-        "calibration": calibration,
-    }, indent=2))
+    out_path.write_text(json.dumps({**calibration, "recovery": recovery}, indent=2))
 
     print("=" * 55)
     print("Covariance Calibration Results")
@@ -73,8 +84,8 @@ def cmd_calibration(args):
     print(f"Interpretation:           {calibration['interpretation']}")
     print()
     print("Per-group recovery RMSE:")
-    for g, v in recovery.get("per_group_rmse", {}).items():
-        print(f"  {g:12s}: {v:.4f}")
+    for g, v in recovery.get("per_group", {}).items():
+        print(f"  {g:12s}: {v['rmse']:.4f}")
     print()
     print("Per-group calibration correlation:")
     for g, v in calibration.get("per_group_correlation", {}).items():
@@ -84,13 +95,13 @@ def cmd_calibration(args):
 
 def cmd_sim2sim(args):
     """Evaluate all trained policies under nominal and perturbed conditions."""
-    import mujoco
     from pgdr.param_space import build_t1_param_space, ParamSpace
     from pgdr.evaluate import evaluate_all_conditions
 
-    mj_model = mujoco.MjModel.from_xml_path(args.model_xml)
-    ps = (ParamSpace.load(args.param_space)
-          if args.param_space else build_t1_param_space(mj_model))
+    param_space_path = resolve_param_space_path(args.param_space, args.results_dir)
+    mj_model = load_mj_model(args.model_xml)
+    ps = (ParamSpace.load(param_space_path)
+          if param_space_path else build_t1_param_space(mj_model))
 
     rd = Path(args.results_dir)
     p_star = jnp.array(np.load(rd / "p_star.npy"))

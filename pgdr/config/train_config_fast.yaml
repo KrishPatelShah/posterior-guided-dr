@@ -1,0 +1,56 @@
+# Fast policy-training configuration for end-to-end validation.
+# Keeps the condition structure identical to the main experiment while
+# reducing timesteps and seeds to something tractable on a local machine.
+
+training:
+  algorithm: "PPO"
+  num_envs: 64
+  num_steps: 8
+  total_timesteps: 32_768
+  learning_rate: 3.0e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_eps: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  num_minibatches: 4
+  update_epochs: 2
+  normalize_advantages: true
+  episode_length: 300
+
+seeds: [0]
+
+environment:
+  name: "booster_t1_joystick"
+  control_dt: 0.02
+  sim_dt: 0.002
+  action_scale: 0.25
+
+conditions:
+  C1_uniform_dr:
+    dr_mode: "uniform"
+    description: "Default MuJoCo Playground hand-tuned uniform DR ranges"
+
+  C2_pure_sysid:
+    dr_mode: "none"
+    description: "Train at p* only, no domain randomization"
+
+  C3_isotropic:
+    dr_mode: "isotropic"
+    description: "N(p*, β²I) with trace matched to PGDR α=1"
+
+  C4_pgdr_0.5:
+    dr_mode: "pgdr"
+    alpha: 0.5
+    description: "PGDR with α=0.5"
+
+  C4_pgdr_1.0:
+    dr_mode: "pgdr"
+    alpha: 1.0
+    description: "PGDR with α=1.0"
+
+  C4_pgdr_2.0:
+    dr_mode: "pgdr"
+    alpha: 2.0
+    description: "PGDR with α=2.0"
