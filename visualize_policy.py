@@ -6,7 +6,7 @@ Usage:
     python visualize_policy.py --checkpoint pgdr/checkpoints/C2_pure_sysid_seed0/final.pkl
     python visualize_policy.py \
         --checkpoint pgdr/checkpoints/C4_pgdr_1.0_seed0/final.pkl \
-        --results-dir pgdr/results/20260409_162150_friction \
+        --results-dir pgdr/results \
         --steps 500 --out-dir pgdr/figures/rollout
 """
 
