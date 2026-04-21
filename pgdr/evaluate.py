@@ -509,6 +509,111 @@ def evaluate_all_conditions(
 
 
 # ---------------------------------------------------------------------------
+# Parameter perturbation sweep (core PGDR eval)
+# ---------------------------------------------------------------------------
+
+def run_param_perturbation_sweep(
+    mj_model: mujoco.MjModel,
+    param_space: ParamSpace,
+    p_star: jnp.ndarray,
+    Sigma: jnp.ndarray,
+    checkpoints_dir: str,
+    command_sequence: list[dict],
+    alpha_levels: list[float],
+    conditions_to_eval: Optional[list[str]] = None,
+    n_param_samples: int = 20,
+    num_episodes: int = 5,
+    rng_seed: int = 42,
+) -> dict:
+    """
+    Sweep uncertainty scale α and evaluate each policy at parameters sampled
+    from N(p*, αΣ). This is the core PGDR eval: C4 should degrade gracefully
+    as α increases while C2 (no DR) degrades rapidly.
+
+    Returns:
+        {
+          "alpha_levels": [...],
+          "<condition>": {"mean": [...], "std": [...], "seeds": [[...], ...]},
+          ...
+        }
+    """
+    from pgdr._ppo import PPOAgent
+    from pgdr.t1_env import _get_default_qpos
+
+    checkpoints = Path(checkpoints_dir)
+    default_joint_pos = jnp.array(_get_default_qpos(mj_model)[7:])
+    base_mjx_model = mjx.put_model(mj_model)
+
+    # Cholesky for sampling
+    L = jnp.linalg.cholesky(Sigma + 1e-8 * jnp.eye(Sigma.shape[0]))
+
+    # Group checkpoint dirs by condition
+    condition_seeds: dict[str, list[Path]] = {}
+    for d in sorted(checkpoints.iterdir()):
+        if not d.is_dir() or not (d / "final.pkl").exists():
+            continue
+        parts = d.name.rsplit("_seed", 1)
+        cond = parts[0] if len(parts) == 2 and parts[1].isdigit() else d.name
+        if conditions_to_eval and cond not in conditions_to_eval:
+            continue
+        condition_seeds.setdefault(cond, []).append(d)
+
+    results: dict = {"alpha_levels": alpha_levels}
+
+    for cond, seed_dirs in condition_seeds.items():
+        print(f"\nSweeping: {cond} ({len(seed_dirs)} seeds)")
+        seed_curves = []
+
+        for seed_dir in seed_dirs:
+            rng = jax.random.PRNGKey(rng_seed)
+            agent = PPOAgent.load(seed_dir / "final.pkl", rng)
+
+            def policy_fn(obs, _rng):
+                return agent.get_deterministic_action(obs[None]).squeeze(0)
+
+            level_errors = []
+            for alpha in alpha_levels:
+                # Sample n_param_samples parameter vectors from N(p*, αΣ)
+                rng, sample_rng = jax.random.split(rng)
+                z = jax.random.normal(sample_rng, (n_param_samples, param_space.d))
+                p_samples = p_star + jnp.sqrt(alpha) * (z @ L.T)
+                # Clip to valid range
+                norm_lower = param_space.to_normalized_vec(param_space._lowers)
+                norm_upper = param_space.to_normalized_vec(param_space._uppers)
+                finite_lower = jnp.where(jnp.isfinite(norm_lower), norm_lower, -1e6)
+                finite_upper = jnp.where(jnp.isfinite(norm_upper), norm_upper,  1e6)
+                p_samples = jnp.clip(p_samples, finite_lower, finite_upper)
+
+                # Evaluate at each sampled parameter vector
+                sample_errors = []
+                for i in range(n_param_samples):
+                    eval_model = param_space.inject(base_mjx_model, p_samples[i])
+                    vel = evaluate_velocity_tracking(
+                        policy_fn=policy_fn,
+                        mjx_model=eval_model,
+                        command_sequence=command_sequence,
+                        control_dt=0.02,
+                        default_joint_pos=default_joint_pos,
+                        num_episodes=num_episodes,
+                    )
+                    sample_errors.append(vel["rms_total"])
+
+                mean_err = float(np.mean(sample_errors))
+                level_errors.append(mean_err)
+                print(f"  {seed_dir.name}  α={alpha:.1f}  rms={mean_err:.4f}")
+            seed_curves.append(level_errors)
+
+        arr = np.array(seed_curves)
+        results[cond] = {
+            "mean": arr.mean(axis=0).tolist(),
+            "std": arr.std(axis=0).tolist(),
+            "seeds": arr.tolist(),
+        }
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Payload robustness sweep
 # ---------------------------------------------------------------------------
 

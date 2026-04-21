@@ -362,6 +362,44 @@ def plot_pgdr_vs_isotropic(
 # Master plotting function
 # ---------------------------------------------------------------------------
 
+def plot_param_sweep(
+    sweep_results: dict,
+    save_path: str = "pgdr/results/param_sweep.png",
+):
+    """
+    Line plot: RMS velocity error vs uncertainty scale α (N(p*, αΣ)).
+
+    This is the core PGDR figure: C2 should degrade rapidly as α grows
+    while C4 stays flat because it was trained to handle this distribution.
+    """
+    setup_style()
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    alpha_levels = sweep_results["alpha_levels"]
+    for cond, data in sweep_results.items():
+        if cond == "alpha_levels" or not isinstance(data, dict):
+            continue
+        means = np.array(data["mean"])
+        stds  = np.array(data["std"])
+        color = COLORS.get(cond, "#666666")
+        label = LABELS.get(cond, cond)
+        ax.plot(alpha_levels, means, color=color, label=label,
+                linewidth=2, marker="o", markersize=4)
+        ax.fill_between(alpha_levels, means - stds, means + stds,
+                        color=color, alpha=0.15)
+
+    ax.axvline(x=1.0, color="gray", linestyle="--", linewidth=1, alpha=0.6,
+               label="α=1 (raw Σ)")
+    ax.set_xlabel("Uncertainty scale α  (parameters drawn from N(p★, αΣ))")
+    ax.set_ylabel("RMS Velocity Error (m/s)")
+    ax.set_title("Robustness to Parameter Uncertainty", fontweight="bold")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(save_path)
+    plt.close(fig)
+    print(f"Saved parameter sweep to {save_path}")
+
+
 def plot_robustness_sweep(
     sweep_results: dict,
     save_path: str = "pgdr/results/robustness_sweep.png",
@@ -435,7 +473,13 @@ def generate_all_plots(results_dir: str = "pgdr/results"):
         plot_eigenvalue_spectrum(eigvals,
                                 str(results_dir / "eigenvalue_spectrum.png"))
 
-    # 6. Robustness sweep
+    # 6. Parameter perturbation sweep
+    param_sweep_path = results_dir / "param_sweep.json"
+    if param_sweep_path.exists():
+        sweep = json.loads(param_sweep_path.read_text())
+        plot_param_sweep(sweep, str(results_dir / "param_sweep.png"))
+
+    # 7. Payload robustness sweep
     sweep_path = results_dir / "robustness_sweep.json"
     if sweep_path.exists():
         sweep = json.loads(sweep_path.read_text())

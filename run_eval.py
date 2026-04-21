@@ -134,6 +134,49 @@ def cmd_sim2sim(args):
     print(f"\nResults saved to {out_path}")
 
 
+def cmd_param_sweep(args):
+    """Sweep N(p*, αΣ) uncertainty scale — the core PGDR robustness eval."""
+    from pgdr.param_space import build_t1_param_space, ParamSpace
+    from pgdr.evaluate import run_param_perturbation_sweep
+
+    param_space_path = resolve_param_space_path(args.param_space, args.results_dir)
+    mj_model = load_mj_model(args.model_xml)
+    ps = (ParamSpace.load(param_space_path)
+          if param_space_path else build_t1_param_space(mj_model))
+
+    rd = Path(args.results_dir)
+    p_star = jnp.array(np.load(rd / "p_star.npy"))
+    Sigma = jnp.array(np.load(rd / "Sigma.npy"))
+
+    alpha_levels = [float(x) for x in args.alpha_levels.split(",")]
+    conditions = args.conditions.split(",") if args.conditions else None
+
+    command_sequence = [
+        {"vx": 1.0, "vy": 0.0, "wz": 0.0, "duration": 5.0},
+        {"vx": 0.0, "vy": 0.0, "wz": 0.5, "duration": 3.0},
+        {"vx": -0.5, "vy": 0.0, "wz": 0.0, "duration": 3.0},
+        {"vx": 0.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
+    ]
+
+    results = run_param_perturbation_sweep(
+        mj_model=mj_model,
+        param_space=ps,
+        p_star=p_star,
+        Sigma=Sigma,
+        checkpoints_dir=args.checkpoints,
+        command_sequence=command_sequence,
+        alpha_levels=alpha_levels,
+        conditions_to_eval=conditions,
+        n_param_samples=args.n_param_samples,
+        num_episodes=args.num_episodes,
+    )
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(results, indent=2))
+    print(f"\nSaved parameter sweep to {out_path}")
+
+
 def cmd_robustness(args):
     """Sweep payload perturbation to compare C2 vs C4 robustness."""
     from pgdr.param_space import build_t1_param_space, ParamSpace
@@ -231,6 +274,22 @@ def main():
     p.add_argument("--num-episodes", type=int, default=50)
     p.add_argument("--output", default="pgdr/results/eval_results.json")
 
+    # -- param-sweep --
+    p = subs.add_parser("param-sweep",
+                        help="Sweep N(p*, αΣ) uncertainty scale (core PGDR eval)")
+    p.add_argument("--model-xml", required=True)
+    p.add_argument("--results-dir", default="pgdr/results/")
+    p.add_argument("--checkpoints", default="pgdr/checkpoints/")
+    p.add_argument("--param-space", default=None)
+    p.add_argument("--alpha-levels", default="0,0.25,0.5,1.0,1.5,2.0,3.0",
+                   help="Comma-separated α values (scales Σ)")
+    p.add_argument("--conditions", default="C1_uniform_dr,C2_pure_sysid,C3_isotropic,C4_pgdr_1.0",
+                   help="Comma-separated condition names to evaluate")
+    p.add_argument("--n-param-samples", type=int, default=20,
+                   help="Parameter vectors sampled per α level")
+    p.add_argument("--num-episodes", type=int, default=5)
+    p.add_argument("--output", default="pgdr/results/param_sweep.json")
+
     # -- robustness --
     p = subs.add_parser("robustness",
                         help="Sweep payload perturbation to compare condition robustness")
@@ -255,6 +314,7 @@ def main():
     dispatch = {
         "calibration": cmd_calibration,
         "sim2sim": cmd_sim2sim,
+        "param-sweep": cmd_param_sweep,
         "robustness": cmd_robustness,
         "plot": cmd_plot,
     }
