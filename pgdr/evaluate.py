@@ -509,6 +509,102 @@ def evaluate_all_conditions(
 
 
 # ---------------------------------------------------------------------------
+# Payload robustness sweep
+# ---------------------------------------------------------------------------
+
+def run_payload_sweep(
+    mj_model: mujoco.MjModel,
+    param_space: ParamSpace,
+    p_star: jnp.ndarray,
+    checkpoints_dir: str,
+    command_sequence: list[dict],
+    payload_levels: list[float],
+    conditions_to_eval: Optional[list[str]] = None,
+    num_episodes: int = 10,
+) -> dict:
+    """
+    Sweep payload perturbation magnitude and record RMS velocity error.
+
+    For each payload level, evaluates all matching policies and aggregates
+    mean/std across seeds.
+
+    Returns:
+        {
+          "payload_levels": [...],
+          "<condition>": {"mean": [...], "std": [...], "seeds": [[...], ...]},
+          ...
+        }
+    """
+    from pgdr._ppo import PPOAgent
+    from pgdr.t1_env import _get_default_qpos
+
+    checkpoints = Path(checkpoints_dir)
+    default_joint_pos = jnp.array(_get_default_qpos(mj_model)[7:])
+    base_mjx_model = mjx.put_model(mj_model)
+
+    # Find torso body index once
+    torso_id = 1
+    for i in range(mj_model.nbody):
+        name = mujoco.mj_id2name(mj_model, mujoco.mjtObj.mjOBJ_BODY, i)
+        if name and "torso" in name.lower():
+            torso_id = i
+            break
+
+    # Group checkpoint dirs by condition (strip _seedN)
+    condition_seeds: dict[str, list[Path]] = {}
+    for d in sorted(checkpoints.iterdir()):
+        if not d.is_dir() or not (d / "final.pkl").exists():
+            continue
+        parts = d.name.rsplit("_seed", 1)
+        cond = parts[0] if len(parts) == 2 and parts[1].isdigit() else d.name
+        if conditions_to_eval and cond not in conditions_to_eval:
+            continue
+        condition_seeds.setdefault(cond, []).append(d)
+
+    results: dict = {"payload_levels": payload_levels}
+
+    for cond, seed_dirs in condition_seeds.items():
+        print(f"\nSweeping: {cond} ({len(seed_dirs)} seeds)")
+        seed_curves = []  # [n_seeds x n_levels]
+
+        for seed_dir in seed_dirs:
+            rng = jax.random.PRNGKey(0)
+            agent = PPOAgent.load(seed_dir / "final.pkl", rng)
+
+            def policy_fn(obs, _rng):
+                return agent.get_deterministic_action(obs[None]).squeeze(0)
+
+            level_errors = []
+            for payload in payload_levels:
+                perturbed = base_mjx_model
+                if payload > 0:
+                    new_mass = base_mjx_model.body_mass.at[torso_id].add(payload)
+                    perturbed = base_mjx_model.replace(body_mass=new_mass)
+                eval_model = param_space.inject(perturbed, p_star)
+                vel = evaluate_velocity_tracking(
+                    policy_fn=policy_fn,
+                    mjx_model=eval_model,
+                    command_sequence=command_sequence,
+                    control_dt=0.02,
+                    default_joint_pos=default_joint_pos,
+                    num_episodes=num_episodes,
+                )
+                level_errors.append(vel["rms_total"])
+                print(f"  {seed_dir.name}  payload={payload:.1f}kg  "
+                      f"rms={vel['rms_total']:.4f}")
+            seed_curves.append(level_errors)
+
+        arr = np.array(seed_curves)  # [n_seeds, n_levels]
+        results[cond] = {
+            "mean": arr.mean(axis=0).tolist(),
+            "std": arr.std(axis=0).tolist(),
+            "seeds": arr.tolist(),
+        }
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 

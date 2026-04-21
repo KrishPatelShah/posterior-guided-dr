@@ -362,6 +362,40 @@ def plot_pgdr_vs_isotropic(
 # Master plotting function
 # ---------------------------------------------------------------------------
 
+def plot_robustness_sweep(
+    sweep_results: dict,
+    save_path: str = "pgdr/results/robustness_sweep.png",
+):
+    """
+    Line plot showing RMS velocity error vs payload perturbation magnitude.
+
+    Each condition is one line; shaded band = ±1 std across seeds.
+    """
+    setup_style()
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    payload_levels = sweep_results["payload_levels"]
+    for cond, data in sweep_results.items():
+        if cond == "payload_levels" or not isinstance(data, dict):
+            continue
+        means = np.array(data["mean"])
+        stds  = np.array(data["std"])
+        color = COLORS.get(cond, "#666666")
+        label = LABELS.get(cond, cond)
+        ax.plot(payload_levels, means, color=color, label=label, linewidth=2, marker="o", markersize=4)
+        ax.fill_between(payload_levels, means - stds, means + stds,
+                        color=color, alpha=0.15)
+
+    ax.set_xlabel("Added Payload (kg)")
+    ax.set_ylabel("RMS Velocity Error (m/s)")
+    ax.set_title("Robustness to Payload Perturbation", fontweight="bold")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(save_path)
+    plt.close(fig)
+    print(f"Saved robustness sweep to {save_path}")
+
+
 def generate_all_plots(results_dir: str = "pgdr/results"):
     """Generate all plots from saved results."""
     results_dir = Path(results_dir)
@@ -400,6 +434,12 @@ def generate_all_plots(results_dir: str = "pgdr/results"):
         eigvals = sorted(np.linalg.eigvalsh(Sigma).tolist(), reverse=True)
         plot_eigenvalue_spectrum(eigvals,
                                 str(results_dir / "eigenvalue_spectrum.png"))
+
+    # 6. Robustness sweep
+    sweep_path = results_dir / "robustness_sweep.json"
+    if sweep_path.exists():
+        sweep = json.loads(sweep_path.read_text())
+        plot_robustness_sweep(sweep, str(results_dir / "robustness_sweep.png"))
 
     print(f"\nAll plots saved to {results_dir}/")
 
