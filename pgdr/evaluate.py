@@ -90,10 +90,12 @@ def evaluate_velocity_tracking(
     """
     rng = jax.random.PRNGKey(rng_seed)
 
-    @jax.jit
-    def run_episode(rng):
+    # Pass mjx_model as explicit argument so JAX caches the compilation
+    # across calls with different model parameter values (same structure).
+    @functools.partial(jax.jit, static_argnums=())
+    def run_episode(model, rng):
         rng, init_rng = jax.random.split(rng)
-        mjx_data = mjx.make_data(mjx_model)
+        mjx_data = mjx.make_data(model)
 
         errors_vx = []
         errors_vy = []
@@ -110,18 +112,17 @@ def evaluate_velocity_tracking(
                 rng, action_rng = jax.random.split(rng)
 
                 command = jnp.array([target_vx, target_vy, target_wz], dtype=data.qpos.dtype)
-                obs = _build_obs(data, command, mjx_model, default_joint_pos)
+                obs = _build_obs(data, command, model, default_joint_pos)
                 action = policy_fn(obs, action_rng)
                 data = data.replace(ctrl=action)
 
                 def substep(d, _):
-                    return mjx.step(mjx_model, d), None
+                    return mjx.step(model, d), None
                 data, _ = jax.lax.scan(substep, data, None, length=n_substeps)
 
-                # Base velocity in world frame (first 3 entries of qvel for floating base)
                 actual_vx = data.qvel[0]
                 actual_vy = data.qvel[1]
-                actual_wz = data.qvel[5]  # Yaw rate
+                actual_wz = data.qvel[5]
 
                 err = jnp.array([
                     (actual_vx - target_vx) ** 2,
@@ -148,9 +149,9 @@ def evaluate_velocity_tracking(
             "rms_total": jnp.sqrt(jnp.mean(all_vx + all_vy + all_wz)),
         }
 
-    # Run multiple episodes
+    # Run multiple episodes — compile once, reuse for all param samples
     rngs = jax.random.split(rng, num_episodes)
-    results = jax.vmap(run_episode)(rngs)
+    results = jax.vmap(lambda r: run_episode(mjx_model, r))(rngs)
 
     return {
         "rms_vx": float(jnp.mean(results["rms_vx"])),
