@@ -143,46 +143,37 @@ def plot_condition_comparison(
     """
     Bar chart comparing all conditions on velocity tracking error.
 
-    Shows nominal and perturbed performance side by side.
+    Aggregates per-seed entries (e.g. C1_uniform_dr_seed0) by condition.
     """
     setup_style()
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
 
-    conditions = [k for k in eval_results if k.startswith("C")]
+    # Aggregate per-seed entries into per-condition mean/std
+    aggregated = {}
+    for key, val in eval_results.items():
+        if not key.startswith("C") or not isinstance(val, dict):
+            continue
+        # Strip _seedN suffix to get condition name
+        parts = key.rsplit("_seed", 1)
+        cond = parts[0] if len(parts) == 2 and parts[1].isdigit() else key
+        aggregated.setdefault(cond, []).append(val.get("rms_total", val.get("rms_vel_error_nominal", 0)))
+
+    conditions = sorted(aggregated.keys())
     if not conditions:
         print("No condition results found for plotting.")
-        plt.close(fig)
         return
 
-    # Nominal performance
-    ax = axes[0]
-    names = [LABELS.get(c, c) for c in conditions]
-    vals_nom = [eval_results[c].get("rms_vel_error_nominal", 0) for c in conditions]
-    stds_nom = [eval_results[c].get("rms_vel_error_nominal_std", 0) for c in conditions]
+    means = [float(np.mean(aggregated[c])) for c in conditions]
+    stds  = [float(np.std(aggregated[c]))  for c in conditions]
+    names  = [LABELS.get(c, c) for c in conditions]
     colors = [COLORS.get(c, "#666666") for c in conditions]
 
-    bars = ax.bar(range(len(conditions)), vals_nom, yerr=stds_nom,
-                  color=colors, edgecolor="white", linewidth=0.5,
-                  capsize=3)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(range(len(conditions)), means, yerr=stds,
+           color=colors, edgecolor="white", linewidth=0.5, capsize=4)
     ax.set_xticks(range(len(conditions)))
     ax.set_xticklabels(names, rotation=30, ha="right")
     ax.set_ylabel("RMS Velocity Error (m/s)")
-    ax.set_title("Nominal Performance")
-
-    # Perturbed performance
-    ax = axes[1]
-    vals_pert = [eval_results[c].get("rms_vel_error_perturbed", 0) for c in conditions]
-    stds_pert = [eval_results[c].get("rms_vel_error_perturbed_std", 0) for c in conditions]
-
-    bars = ax.bar(range(len(conditions)), vals_pert, yerr=stds_pert,
-                  color=colors, edgecolor="white", linewidth=0.5,
-                  capsize=3)
-    ax.set_xticks(range(len(conditions)))
-    ax.set_xticklabels(names, rotation=30, ha="right")
-    ax.set_ylabel("RMS Velocity Error (m/s)")
-    ax.set_title("Under Perturbation (+1kg payload)")
-
-    fig.suptitle("Condition Comparison: Velocity Tracking", fontweight="bold")
+    ax.set_title("Condition Comparison: Velocity Tracking", fontweight="bold")
     fig.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
