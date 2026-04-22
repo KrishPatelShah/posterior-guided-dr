@@ -14,6 +14,7 @@ The critical diagnostic is the covariance calibration plot:
 
 from __future__ import annotations
 
+import functools
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,6 +64,70 @@ class EvalResults:
 # Velocity tracking evaluation
 # ---------------------------------------------------------------------------
 
+def _make_episode_fn(policy_fn, command_sequence, control_dt, default_joint_pos, n_substeps):
+    """
+    Returns a JIT-compiled run_episode(model, rng) -> metrics dict.
+
+    Factored out so the compiled function can be reused across many models
+    without recompilation (model is a traced arg, not static).
+    """
+    @jax.jit
+    def run_episode(model, rng):
+        _, init_rng = jax.random.split(rng)
+        mjx_data = mjx.make_data(model)
+
+        errors_vx = []
+        errors_vy = []
+        errors_wz = []
+
+        for cmd in command_sequence:
+            n_steps = int(cmd["duration"] / control_dt)
+            target_vx = cmd.get("vx", 0.0)
+            target_vy = cmd.get("vy", 0.0)
+            target_wz = cmd.get("wz", 0.0)
+
+            def step_fn(carry, _):
+                data, rng = carry
+                rng, action_rng = jax.random.split(rng)
+                command = jnp.array([target_vx, target_vy, target_wz], dtype=data.qpos.dtype)
+                obs = _build_obs(data, command, model, default_joint_pos)
+                action = policy_fn(obs, action_rng)
+                data = data.replace(ctrl=action)
+
+                def substep(d, _):
+                    return mjx.step(model, d), None
+                data, _ = jax.lax.scan(substep, data, None, length=n_substeps)
+
+                actual_vx = data.qvel[0]
+                actual_vy = data.qvel[1]
+                actual_wz = data.qvel[5]
+                err = jnp.array([
+                    (actual_vx - target_vx) ** 2,
+                    (actual_vy - target_vy) ** 2,
+                    (actual_wz - target_wz) ** 2,
+                ])
+                return (data, rng), err
+
+            (mjx_data, rng), errs = jax.lax.scan(
+                step_fn, (mjx_data, rng), None, length=n_steps
+            )
+            errors_vx.append(errs[:, 0])
+            errors_vy.append(errs[:, 1])
+            errors_wz.append(errs[:, 2])
+
+        all_vx = jnp.concatenate(errors_vx)
+        all_vy = jnp.concatenate(errors_vy)
+        all_wz = jnp.concatenate(errors_wz)
+        return {
+            "rms_vx": jnp.sqrt(jnp.mean(all_vx)),
+            "rms_vy": jnp.sqrt(jnp.mean(all_vy)),
+            "rms_wz": jnp.sqrt(jnp.mean(all_wz)),
+            "rms_total": jnp.sqrt(jnp.mean(all_vx + all_vy + all_wz)),
+        }
+
+    return run_episode
+
+
 def evaluate_velocity_tracking(
     policy_fn,
     mjx_model: mjx.Model,
@@ -89,69 +154,11 @@ def evaluate_velocity_tracking(
         Dictionary with per-axis and total RMS velocity errors.
     """
     rng = jax.random.PRNGKey(rng_seed)
-
-    # Pass mjx_model as explicit argument so JAX caches the compilation
-    # across calls with different model parameter values (same structure).
-    @functools.partial(jax.jit, static_argnums=())
-    def run_episode(model, rng):
-        rng, init_rng = jax.random.split(rng)
-        mjx_data = mjx.make_data(model)
-
-        errors_vx = []
-        errors_vy = []
-        errors_wz = []
-
-        for cmd in command_sequence:
-            n_steps = int(cmd["duration"] / control_dt)
-            target_vx = cmd.get("vx", 0.0)
-            target_vy = cmd.get("vy", 0.0)
-            target_wz = cmd.get("wz", 0.0)
-
-            def step_fn(carry, _):
-                data, rng = carry
-                rng, action_rng = jax.random.split(rng)
-
-                command = jnp.array([target_vx, target_vy, target_wz], dtype=data.qpos.dtype)
-                obs = _build_obs(data, command, model, default_joint_pos)
-                action = policy_fn(obs, action_rng)
-                data = data.replace(ctrl=action)
-
-                def substep(d, _):
-                    return mjx.step(model, d), None
-                data, _ = jax.lax.scan(substep, data, None, length=n_substeps)
-
-                actual_vx = data.qvel[0]
-                actual_vy = data.qvel[1]
-                actual_wz = data.qvel[5]
-
-                err = jnp.array([
-                    (actual_vx - target_vx) ** 2,
-                    (actual_vy - target_vy) ** 2,
-                    (actual_wz - target_wz) ** 2,
-                ])
-                return (data, rng), err
-
-            (mjx_data, rng), errs = jax.lax.scan(
-                step_fn, (mjx_data, rng), None, length=n_steps
-            )
-            errors_vx.append(errs[:, 0])
-            errors_vy.append(errs[:, 1])
-            errors_wz.append(errs[:, 2])
-
-        all_vx = jnp.concatenate(errors_vx)
-        all_vy = jnp.concatenate(errors_vy)
-        all_wz = jnp.concatenate(errors_wz)
-
-        return {
-            "rms_vx": jnp.sqrt(jnp.mean(all_vx)),
-            "rms_vy": jnp.sqrt(jnp.mean(all_vy)),
-            "rms_wz": jnp.sqrt(jnp.mean(all_wz)),
-            "rms_total": jnp.sqrt(jnp.mean(all_vx + all_vy + all_wz)),
-        }
-
-    # Run multiple episodes — compile once, reuse for all param samples
+    run_episode = _make_episode_fn(
+        policy_fn, command_sequence, control_dt, default_joint_pos, n_substeps
+    )
     rngs = jax.random.split(rng, num_episodes)
-    results = jax.vmap(lambda r: run_episode(mjx_model, r))(rngs)
+    results = jax.vmap(functools.partial(run_episode, mjx_model))(rngs)
 
     return {
         "rms_vx": float(jnp.mean(results["rms_vx"])),
@@ -572,34 +579,45 @@ def run_param_perturbation_sweep(
             def policy_fn(obs, _rng):
                 return agent.get_deterministic_action(obs[None]).squeeze(0)
 
+            run_episode = _make_episode_fn(
+                policy_fn, command_sequence, 0.02, default_joint_pos, n_substeps=10
+            )
+
+            # Compile once per seed: vmap over (param_sample, episode).
+            # inject is vmappable; run_episode traces model abstractly so
+            # different concrete param values do not trigger recompilation.
+            inject_batch = jax.jit(
+                jax.vmap(lambda p: param_space.inject(base_mjx_model, p))
+            )
+
+            @jax.jit
+            def eval_batch(batched_models, ep_rngs):
+                # batched_models: (n_param_samples, ...) model pytree
+                # ep_rngs:        (n_param_samples, num_episodes, 2)
+                def eval_one(model, rngs_for_sample):
+                    out = jax.vmap(lambda r: run_episode(model, r))(rngs_for_sample)
+                    return jnp.mean(out["rms_total"])
+                return jax.vmap(eval_one)(batched_models, ep_rngs)
+
+            # Precompute clipping bounds (same for all alpha)
+            norm_lower = param_space.to_normalized_vec(param_space._lowers)
+            norm_upper = param_space.to_normalized_vec(param_space._uppers)
+            finite_lower = jnp.where(jnp.isfinite(norm_lower), norm_lower, -1e6)
+            finite_upper = jnp.where(jnp.isfinite(norm_upper), norm_upper,  1e6)
+
             level_errors = []
             for alpha in alpha_levels:
-                # Sample n_param_samples parameter vectors from N(p*, αΣ)
-                rng, sample_rng = jax.random.split(rng)
+                rng, sample_rng, ep_rng = jax.random.split(rng, 3)
                 z = jax.random.normal(sample_rng, (n_param_samples, param_space.d))
                 p_samples = p_star + jnp.sqrt(alpha) * (z @ L.T)
-                # Clip to valid range
-                norm_lower = param_space.to_normalized_vec(param_space._lowers)
-                norm_upper = param_space.to_normalized_vec(param_space._uppers)
-                finite_lower = jnp.where(jnp.isfinite(norm_lower), norm_lower, -1e6)
-                finite_upper = jnp.where(jnp.isfinite(norm_upper), norm_upper,  1e6)
                 p_samples = jnp.clip(p_samples, finite_lower, finite_upper)
 
-                # Evaluate at each sampled parameter vector
-                sample_errors = []
-                for i in range(n_param_samples):
-                    eval_model = param_space.inject(base_mjx_model, p_samples[i])
-                    vel = evaluate_velocity_tracking(
-                        policy_fn=policy_fn,
-                        mjx_model=eval_model,
-                        command_sequence=command_sequence,
-                        control_dt=0.02,
-                        default_joint_pos=default_joint_pos,
-                        num_episodes=num_episodes,
-                    )
-                    sample_errors.append(vel["rms_total"])
+                batched_models = inject_batch(p_samples)
+                ep_rngs = jax.random.split(ep_rng, n_param_samples * num_episodes)
+                ep_rngs = ep_rngs.reshape(n_param_samples, num_episodes, -1)
 
-                mean_err = float(np.mean(sample_errors))
+                sample_errors = eval_batch(batched_models, ep_rngs)
+                mean_err = float(jnp.mean(sample_errors))
                 level_errors.append(mean_err)
                 print(f"  {seed_dir.name}  α={alpha:.1f}  rms={mean_err:.4f}")
             seed_curves.append(level_errors)
