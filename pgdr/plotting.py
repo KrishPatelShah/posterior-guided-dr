@@ -434,6 +434,157 @@ def plot_robustness_sweep(
     print(f"Saved robustness sweep to {save_path}")
 
 
+def plot_condition_comparison_full(
+    eval_results: dict,
+    save_path: str = "pgdr/figures/condition_comparison_full.png",
+    conditions: list[str] | None = None,
+):
+    """
+    Bar chart with per-axis breakdown for C1–C4, averaged across all seeds.
+    Each condition group shows vx / vy / wz / total bars with seed std error bars.
+    """
+    setup_style()
+
+    if conditions is None:
+        conditions = ["C1_uniform_dr", "C2_pure_sysid", "C3_isotropic", "C4_pgdr_1.0"]
+
+    axes_keys = ["rms_vx", "rms_vy", "rms_wz", "rms_total"]
+    axes_labels = ["vx (forward)", "vy (lateral)", "wz (yaw)", "Total"]
+    axes_colors = ["#4C72B0", "#DD8452", "#55A868", "#333333"]
+
+    # Aggregate seeds per condition
+    data = {}
+    for cond in conditions:
+        seeds = [v for k, v in eval_results.items()
+                 if k.startswith(cond + "_seed") and isinstance(v, dict)]
+        if not seeds:
+            continue
+        data[cond] = {
+            key: (float(np.mean([s[key] for s in seeds])),
+                  float(np.std([s[key] for s in seeds])))
+            for key in axes_keys
+        }
+
+    present = [c for c in conditions if c in data]
+    n_conds = len(present)
+    n_axes = len(axes_keys)
+    width = 0.18
+    x = np.arange(n_conds)
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    for j, (key, label, color) in enumerate(zip(axes_keys, axes_labels, axes_colors)):
+        means = [data[c][key][0] for c in present]
+        stds  = [data[c][key][1] for c in present]
+        offset = (j - (n_axes - 1) / 2) * width
+        bars = ax.bar(x + offset, means, width, yerr=stds, label=label,
+                      color=color, alpha=0.85, capsize=3, edgecolor="white", linewidth=0.5)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([LABELS.get(c, c) for c in present], rotation=20, ha="right")
+    ax.set_ylabel("RMS Velocity Error (m/s or rad/s)")
+    ax.set_title("Condition Comparison: All Seeds — Per-Axis Velocity Tracking", fontweight="bold")
+    ax.legend(title="Axis", loc="upper right")
+    ax.set_ylim(bottom=0)
+    ax.grid(axis="y", alpha=0.3)
+
+    fig.tight_layout()
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path)
+    plt.close(fig)
+    print(f"Saved full condition comparison to {save_path}")
+
+
+def plot_transfer_test(
+    results: dict,
+    save_path: str = "pgdr/figures/transfer_test.png",
+):
+    """
+    Line plot of RMS error vs δ (param mismatch magnitude) for each condition.
+    Shaded band = std across seeds.
+    """
+    setup_style()
+
+    deltas = results["delta_levels"]
+    conds = [k for k in results if k != "delta_levels"]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for cond in conds:
+        means = np.array(results[cond]["mean"])
+        stds  = np.array(results[cond]["std"])
+        color = COLORS.get(cond, "#666666")
+        label = LABELS.get(cond, cond)
+        ax.plot(deltas, means, marker="o", color=color, label=label, linewidth=1.8)
+        ax.fill_between(deltas, means - stds, means + stds, color=color, alpha=0.15)
+
+    ax.set_xlabel("Parameter mismatch δ (fraction of param range)")
+    ax.set_ylabel("RMS Velocity Error (m/s or rad/s)")
+    ax.set_title("Sim-to-Sim Transfer Test: RMS Error vs Parameter Mismatch", fontweight="bold")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    ax.set_ylim(bottom=0)
+
+    fig.tight_layout()
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path)
+    plt.close(fig)
+    print(f"Saved transfer test plot to {save_path}")
+
+
+def plot_p_true_sweep(
+    results: dict,
+    save_path: str = "pgdr/figures/p_true_sweep.png",
+):
+    """
+    Line plot of RMS error vs interpolation fraction t along p_star → p_true.
+
+    Two panels:
+      Left:  all four conditions — honest full picture
+      Right: C3 vs C4 only — the fairest PGDR comparison
+    """
+    setup_style()
+
+    t_levels = results["t_levels"]
+    mahal = results.get("p_star_to_p_true_mahal", None)
+    conds = [k for k in results if k not in ("t_levels", "p_star_to_p_true_mahal")
+             and isinstance(results[k], dict)]
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+
+    for ax, subset, title in [
+        (axes[0], conds, "All Conditions"),
+        (axes[1], [c for c in conds if c in ("C3_isotropic", "C4_pgdr_1.0")],
+         "PGDR vs Isotropic (fair comparison)"),
+    ]:
+        for cond in subset:
+            means = np.array(results[cond]["mean"])
+            stds  = np.array(results[cond]["std"])
+            color = COLORS.get(cond, "#666666")
+            label = LABELS.get(cond, cond)
+            ax.plot(t_levels, means, marker="o", markersize=4,
+                    color=color, label=label, linewidth=2)
+            ax.fill_between(t_levels, means - stds, means + stds,
+                            color=color, alpha=0.15)
+
+        ax.axvline(x=1.0, color="gray", linestyle="--", linewidth=1, alpha=0.7,
+                   label="p_true")
+        ax.set_xlabel("Interpolation fraction t  (0 = p★, 1 = p_true)")
+        ax.set_ylabel("RMS Velocity Error (m/s or rad/s)")
+        ax.set_title(title, fontweight="bold")
+        ax.legend(fontsize=9)
+        ax.grid(alpha=0.3)
+        ax.set_ylim(bottom=0)
+
+    mahal_str = f"  (‖p★→p_true‖ = {mahal:.2f}σ)" if mahal else ""
+    fig.suptitle(f"p★ → p_true Sweep{mahal_str}", fontweight="bold", fontsize=12)
+    fig.tight_layout()
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, dpi=150)
+    plt.close(fig)
+    print(f"Saved p_true sweep plot to {save_path}")
+
+
 def generate_all_plots(results_dir: str = "pgdr/results"):
     """Generate all plots from saved results."""
     results_dir = Path(results_dir)
@@ -450,6 +601,10 @@ def generate_all_plots(results_dir: str = "pgdr/results"):
         eval_results = json.loads(eval_path.read_text())
         plot_condition_comparison(eval_results,
                                   str(results_dir / "condition_comparison.png"))
+        plot_condition_comparison_full(
+            eval_results,
+            save_path=str(results_dir / "../figures/condition_comparison_full.png"),
+        )
 
     # 3. Convergence
     sysid_info_path = results_dir / "sysid_info.json"
@@ -484,6 +639,18 @@ def generate_all_plots(results_dir: str = "pgdr/results"):
     if sweep_path.exists():
         sweep = json.loads(sweep_path.read_text())
         plot_robustness_sweep(sweep, str(results_dir / "robustness_sweep.png"))
+
+    # 8. Transfer test
+    transfer_path = results_dir / "transfer_test.json"
+    if transfer_path.exists():
+        transfer = json.loads(transfer_path.read_text())
+        plot_transfer_test(transfer, str(results_dir / "../figures/transfer_test.png"))
+
+    # 9. p_true sweep
+    p_true_path = results_dir / "p_true_sweep.json"
+    if p_true_path.exists():
+        p_true_sweep = json.loads(p_true_path.read_text())
+        plot_p_true_sweep(p_true_sweep, str(results_dir / "../figures/p_true_sweep.png"))
 
     print(f"\nAll plots saved to {results_dir}/")
 

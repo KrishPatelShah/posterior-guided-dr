@@ -146,7 +146,7 @@ def cmd_param_sweep(args):
 
     rd = Path(args.results_dir)
     p_star = jnp.array(np.load(rd / "p_star.npy"))
-    Sigma = jnp.array(np.load(rd / "Sigma.npy"))
+    Sigma = jnp.array(np.load(rd / "Sigma.npy")) * args.sigma_scale
 
     alpha_levels = [float(x) for x in args.alpha_levels.split(",")]
     conditions = args.conditions.split(",") if args.conditions else None
@@ -175,6 +175,101 @@ def cmd_param_sweep(args):
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2))
     print(f"\nSaved parameter sweep to {out_path}")
+
+
+def cmd_transfer_test(args):
+    """Sim-to-sim transfer test: evaluate all conditions at p_star + δ * direction."""
+    from pgdr.param_space import build_t1_param_space, ParamSpace
+    from pgdr.evaluate import run_transfer_test
+
+    param_space_path = resolve_param_space_path(args.param_space, args.results_dir)
+    mj_model = load_mj_model(args.model_xml)
+    ps = (ParamSpace.load(param_space_path)
+          if param_space_path else build_t1_param_space(mj_model))
+
+    rd = Path(args.results_dir)
+    p_star = jnp.array(np.load(rd / "p_star.npy"))
+
+    delta_levels = [float(x) for x in args.delta_levels.split(",")]
+    conditions = args.conditions.split(",") if args.conditions else None
+
+    command_sequence = [
+        {"vx": 1.0, "vy": 0.0, "wz": 0.0, "duration": 5.0},
+        {"vx": 0.0, "vy": 0.0, "wz": 0.5, "duration": 3.0},
+        {"vx": -0.5, "vy": 0.0, "wz": 0.0, "duration": 3.0},
+        {"vx": 0.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
+    ]
+
+    results = run_transfer_test(
+        mj_model=mj_model,
+        param_space=ps,
+        p_star=p_star,
+        checkpoints_dir=args.checkpoints,
+        command_sequence=command_sequence,
+        delta_levels=delta_levels,
+        conditions_to_eval=conditions,
+        n_directions=args.n_directions,
+        num_episodes=args.num_episodes,
+    )
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(results, indent=2))
+    print(f"\nSaved transfer test to {out_path}")
+
+
+def cmd_p_true_sweep(args):
+    """Sweep from p_star toward p_true — the principled sysid-mismatch eval."""
+    from pgdr.param_space import build_t1_param_space, ParamSpace
+    from pgdr.evaluate import run_p_true_sweep
+
+    if not Path(args.results_dir, "p_true.npy").exists():
+        print("ERROR: p_true.npy not found — this eval requires sim-to-sim mode.")
+        sys.exit(1)
+
+    param_space_path = resolve_param_space_path(args.param_space, args.results_dir)
+    mj_model = load_mj_model(args.model_xml)
+    ps = (ParamSpace.load(param_space_path)
+          if param_space_path else build_t1_param_space(mj_model))
+
+    rd = Path(args.results_dir)
+    p_star = jnp.array(np.load(rd / "p_star.npy"))
+    p_true = jnp.array(np.load(rd / "p_true.npy"))
+    Sigma = jnp.array(np.load(rd / "Sigma.npy"))
+
+    # Report Mahalanobis distance for interpretability
+    diff = p_star - p_true
+    mahal = float(jnp.sqrt(diff @ jnp.linalg.solve(Sigma, diff)))
+    print(f"Mahalanobis distance p_star→p_true: {mahal:.2f}σ")
+    print(f"  (t=1 puts all conditions at the actual identified mismatch point)")
+
+    t_levels = [float(x) for x in args.t_levels.split(",")]
+    conditions = args.conditions.split(",") if args.conditions else None
+
+    command_sequence = [
+        {"vx": 1.0, "vy": 0.0, "wz": 0.0, "duration": 5.0},
+        {"vx": 0.0, "vy": 0.0, "wz": 0.5, "duration": 3.0},
+        {"vx": -0.5, "vy": 0.0, "wz": 0.0, "duration": 3.0},
+        {"vx": 0.0, "vy": 0.0, "wz": 0.0, "duration": 2.0},
+    ]
+
+    results = run_p_true_sweep(
+        mj_model=mj_model,
+        param_space=ps,
+        p_star=p_star,
+        p_true=p_true,
+        checkpoints_dir=args.checkpoints,
+        command_sequence=command_sequence,
+        t_levels=t_levels,
+        conditions_to_eval=conditions,
+        num_episodes=args.num_episodes,
+    )
+    results["p_star_to_p_true_mahal"] = mahal
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(results, indent=2))
+    print(f"\nSaved p_true sweep to {out_path}")
 
 
 def cmd_robustness(args):
@@ -288,7 +383,39 @@ def main():
     p.add_argument("--n-param-samples", type=int, default=20,
                    help="Parameter vectors sampled per α level")
     p.add_argument("--num-episodes", type=int, default=5)
+    p.add_argument("--sigma-scale", type=float, default=1.0,
+                   help="Multiply Sigma by this factor before sampling (e.g. 1000 to stress-test)")
     p.add_argument("--output", default="pgdr/results/param_sweep.json")
+
+    # -- transfer-test --
+    p = subs.add_parser("transfer-test",
+                        help="Sim-to-sim transfer test with δ-scaled param mismatch")
+    p.add_argument("--model-xml", required=True)
+    p.add_argument("--results-dir", default="pgdr/results/")
+    p.add_argument("--checkpoints", default="pgdr/checkpoints/")
+    p.add_argument("--param-space", default=None)
+    p.add_argument("--delta-levels", default="0.0,0.05,0.1,0.2,0.3,0.5",
+                   help="Comma-separated δ values (fraction of parameter range)")
+    p.add_argument("--conditions", default="C1_uniform_dr,C2_pure_sysid,C3_isotropic,C4_pgdr_1.0",
+                   help="Comma-separated condition names to evaluate")
+    p.add_argument("--n-directions", type=int, default=10,
+                   help="Number of random perturbation directions to average over")
+    p.add_argument("--num-episodes", type=int, default=5)
+    p.add_argument("--output", default="pgdr/results/transfer_test.json")
+
+    # -- p-true-sweep --
+    p = subs.add_parser("p-true-sweep",
+                        help="Sweep from p_star toward p_true (principled sysid-mismatch eval)")
+    p.add_argument("--model-xml", required=True)
+    p.add_argument("--results-dir", default="pgdr/results/")
+    p.add_argument("--checkpoints", default="pgdr/checkpoints/")
+    p.add_argument("--param-space", default=None)
+    p.add_argument("--t-levels", default="0.0,0.25,0.5,0.75,1.0,1.5,2.0",
+                   help="Interpolation fractions (0=p_star, 1=p_true, >1=extrapolation)")
+    p.add_argument("--conditions", default=None,
+                   help="Comma-separated condition names (default: all)")
+    p.add_argument("--num-episodes", type=int, default=20)
+    p.add_argument("--output", default="pgdr/results/p_true_sweep.json")
 
     # -- robustness --
     p = subs.add_parser("robustness",
@@ -315,6 +442,8 @@ def main():
         "calibration": cmd_calibration,
         "sim2sim": cmd_sim2sim,
         "param-sweep": cmd_param_sweep,
+        "transfer-test": cmd_transfer_test,
+        "p-true-sweep": cmd_p_true_sweep,
         "robustness": cmd_robustness,
         "plot": cmd_plot,
     }

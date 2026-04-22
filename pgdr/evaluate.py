@@ -633,6 +633,229 @@ def run_param_perturbation_sweep(
 
 
 # ---------------------------------------------------------------------------
+# Sim-to-sim transfer test
+# ---------------------------------------------------------------------------
+
+def run_transfer_test(
+    mj_model: mujoco.MjModel,
+    param_space: ParamSpace,
+    p_star: jnp.ndarray,
+    checkpoints_dir: str,
+    command_sequence: list[dict],
+    delta_levels: list[float],
+    conditions_to_eval: Optional[list[str]] = None,
+    n_directions: int = 10,
+    num_episodes: int = 5,
+    rng_seed: int = 42,
+) -> dict:
+    """
+    Fair sim-to-sim transfer test.
+
+    Evaluates all conditions at p_eval = p_star + δ * direction, where
+    direction is a random unit vector in normalized parameter space and δ
+    is expressed as a fraction of each parameter's [lower, upper] range.
+
+    Unlike the param sweep (which uses Σ for sampling), this is agnostic
+    to the CMA-ES posterior and gives each condition an equal footing.
+
+    Returns:
+        {
+          "delta_levels": [...],
+          "<condition>": {"mean": [...], "std": [...], "seeds": [[...], ...]},
+        }
+    """
+    from pgdr._ppo import PPOAgent
+    from pgdr.t1_env import _get_default_qpos
+
+    checkpoints = Path(checkpoints_dir)
+    default_joint_pos = jnp.array(_get_default_qpos(mj_model)[7:])
+    base_mjx_model = mjx.put_model(mj_model)
+
+    # Normalized parameter range half-widths — used to scale δ
+    norm_lower = param_space.to_normalized_vec(param_space._lowers)
+    norm_upper = param_space.to_normalized_vec(param_space._uppers)
+    finite_lower = jnp.where(jnp.isfinite(norm_lower), norm_lower, p_star - 1.0)
+    finite_upper = jnp.where(jnp.isfinite(norm_upper), norm_upper, p_star + 1.0)
+    param_range = finite_upper - finite_lower  # per-parameter range width
+
+    # Group checkpoint dirs by condition
+    condition_seeds: dict[str, list[Path]] = {}
+    for d in sorted(checkpoints.iterdir()):
+        if not d.is_dir() or not (d / "final.pkl").exists():
+            continue
+        parts = d.name.rsplit("_seed", 1)
+        cond = parts[0] if len(parts) == 2 and parts[1].isdigit() else d.name
+        if conditions_to_eval and cond not in conditions_to_eval:
+            continue
+        condition_seeds.setdefault(cond, []).append(d)
+
+    # Pre-sample random unit directions (same for all conditions/seeds)
+    rng = jax.random.PRNGKey(rng_seed)
+    rng, dir_rng = jax.random.split(rng)
+    raw = jax.random.normal(dir_rng, (n_directions, param_space.d))
+    norms = jnp.linalg.norm(raw, axis=1, keepdims=True)
+    unit_dirs = raw / norms  # (n_directions, d)
+
+    results: dict = {"delta_levels": delta_levels}
+
+    for cond, seed_dirs in condition_seeds.items():
+        print(f"\nTransfer test: {cond} ({len(seed_dirs)} seeds)")
+        seed_curves = []
+
+        for seed_dir in seed_dirs:
+            rng, seed_rng = jax.random.split(rng)
+            agent = PPOAgent.load(seed_dir / "final.pkl", seed_rng)
+
+            def policy_fn(obs, _rng):
+                return agent.get_deterministic_action(obs[None]).squeeze(0)
+
+            run_episode = _make_episode_fn(
+                policy_fn, command_sequence, 0.02, default_joint_pos, n_substeps=10
+            )
+
+            inject_batch = jax.jit(
+                jax.vmap(lambda p: param_space.inject(base_mjx_model, p))
+            )
+
+            @jax.jit
+            def eval_batch(batched_models, ep_rngs):
+                def eval_one(model, rngs_for_sample):
+                    out = jax.vmap(lambda r: run_episode(model, r))(rngs_for_sample)
+                    return jnp.mean(out["rms_total"])
+                return jax.vmap(eval_one)(batched_models, ep_rngs)
+
+            level_errors = []
+            for delta in delta_levels:
+                rng, ep_rng = jax.random.split(rng)
+
+                # p_eval = p_star + δ * direction * param_range (element-wise)
+                p_evals = p_star + delta * unit_dirs * param_range[None, :]
+                p_evals = jnp.clip(p_evals, finite_lower, finite_upper)
+
+                batched_models = inject_batch(p_evals)
+                ep_rngs = jax.random.split(ep_rng, n_directions * num_episodes)
+                ep_rngs = ep_rngs.reshape(n_directions, num_episodes, -1)
+
+                sample_errors = eval_batch(batched_models, ep_rngs)
+                mean_err = float(jnp.mean(sample_errors))
+                level_errors.append(mean_err)
+                print(f"  {seed_dir.name}  δ={delta:.2f}  rms={mean_err:.4f}")
+            seed_curves.append(level_errors)
+
+        arr = np.array(seed_curves)
+        results[cond] = {
+            "mean": arr.mean(axis=0).tolist(),
+            "std": arr.std(axis=0).tolist(),
+            "seeds": arr.tolist(),
+        }
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# p_true sweep — the principled sysid-mismatch eval
+# ---------------------------------------------------------------------------
+
+def run_p_true_sweep(
+    mj_model: mujoco.MjModel,
+    param_space: ParamSpace,
+    p_star: jnp.ndarray,
+    p_true: jnp.ndarray,
+    checkpoints_dir: str,
+    command_sequence: list[dict],
+    t_levels: list[float],
+    conditions_to_eval: Optional[list[str]] = None,
+    num_episodes: int = 10,
+    rng_seed: int = 42,
+) -> dict:
+    """
+    Evaluate all conditions at p_eval(t) = p_star + t*(p_true - p_star).
+
+    t=0   → p_star  (where C2 pure sysid was trained; its home turf)
+    t=1   → p_true  (actual ground-truth parameters; real deployment)
+    t>1   → extrapolation beyond p_true
+
+    The direction is fixed to the actual sysid mismatch vector, so this
+    directly measures how each condition handles the specific error that
+    CMA-ES made — unlike the transfer test which uses random directions.
+    PGDR should degrade more gracefully than C2 because its posterior
+    covers the p_true direction.
+
+    Returns:
+        {
+          "t_levels": [...],
+          "p_star_to_p_true_mahal": float,   # Mahalanobis distance for context
+          "<condition>": {"mean": [...], "std": [...], "seeds": [[...], ...]},
+        }
+    """
+    from pgdr._ppo import PPOAgent
+    from pgdr.t1_env import _get_default_qpos
+
+    checkpoints = Path(checkpoints_dir)
+    default_joint_pos = jnp.array(_get_default_qpos(mj_model)[7:])
+    base_mjx_model = mjx.put_model(mj_model)
+
+    direction = p_true - p_star  # fixed mismatch vector
+
+    norm_lower = param_space.to_normalized_vec(param_space._lowers)
+    norm_upper = param_space.to_normalized_vec(param_space._uppers)
+    finite_lower = jnp.where(jnp.isfinite(norm_lower), norm_lower, p_star - 1.0)
+    finite_upper = jnp.where(jnp.isfinite(norm_upper), norm_upper, p_star + 1.0)
+
+    # Group checkpoint dirs by condition (strip _seedN suffix)
+    condition_seeds: dict[str, list[Path]] = {}
+    for d in sorted(checkpoints.iterdir()):
+        if not d.is_dir() or not (d / "final.pkl").exists():
+            continue
+        parts = d.name.rsplit("_seed", 1)
+        cond = parts[0] if len(parts) == 2 and parts[1].isdigit() else d.name
+        if conditions_to_eval and cond not in conditions_to_eval:
+            continue
+        condition_seeds.setdefault(cond, []).append(d)
+
+    results: dict = {"t_levels": t_levels}
+
+    for cond, seed_dirs in condition_seeds.items():
+        print(f"\np_true sweep: {cond} ({len(seed_dirs)} seeds)")
+        seed_curves = []
+
+        for seed_dir in seed_dirs:
+            rng = jax.random.PRNGKey(rng_seed)
+            agent = PPOAgent.load(seed_dir / "final.pkl", rng)
+
+            def policy_fn(obs, _rng):
+                return agent.get_deterministic_action(obs[None]).squeeze(0)
+
+            level_errors = []
+            for t in t_levels:
+                p_eval = jnp.clip(p_star + t * direction, finite_lower, finite_upper)
+                eval_model = param_space.inject(base_mjx_model, p_eval)
+
+                rng, ep_rng = jax.random.split(rng)
+                vel = evaluate_velocity_tracking(
+                    policy_fn=policy_fn,
+                    mjx_model=eval_model,
+                    command_sequence=command_sequence,
+                    control_dt=0.02,
+                    default_joint_pos=default_joint_pos,
+                    num_episodes=num_episodes,
+                    rng_seed=int(ep_rng[0]),
+                )
+                level_errors.append(vel["rms_total"])
+                print(f"  {seed_dir.name}  t={t:.2f}  rms={vel['rms_total']:.4f}")
+            seed_curves.append(level_errors)
+
+        arr = np.array(seed_curves)
+        results[cond] = {
+            "mean": arr.mean(axis=0).tolist(),
+            "std": arr.std(axis=0).tolist(),
+            "seeds": arr.tolist(),
+        }
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Payload robustness sweep
 # ---------------------------------------------------------------------------
 
